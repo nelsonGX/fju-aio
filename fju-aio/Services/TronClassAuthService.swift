@@ -204,8 +204,10 @@ actor TronClassAuthService {
             
             let loginResponse = try JSONDecoder().decode(CASLoginResponse.self, from: data)
             
-            // Session expires in 2 hours
-            let expiresAt = Date().addingTimeInterval(2 * 60 * 60)
+            // Parse expiration time from session ID
+            // Format: V2-1-{uuid}.{base64}.{timestamp}.{signature}
+            let expiresAt = parseExpirationFromSessionId(sessionId)
+            logger.info("📅 Session expires at: \(expiresAt)")
             
             return TronClassSession(
                 sessionId: sessionId,
@@ -218,6 +220,24 @@ actor TronClassAuthService {
             logger.error("❌ Decoding error: \(error.localizedDescription)")
             throw AuthenticationError.networkError(error)
         }
+    }
+    
+    // MARK: - Session Parsing
+    
+    private func parseExpirationFromSessionId(_ sessionId: String) -> Date {
+        // Session ID format: V2-1-{uuid}.{base64}.{timestamp}.{signature}
+        let components = sessionId.components(separatedBy: ".")
+        
+        guard components.count >= 3,
+              let timestampString = components[safe: 2],
+              let timestamp = TimeInterval(timestampString) else {
+            logger.warning("⚠️ Could not parse expiration from session ID, using default 24h")
+            return Date().addingTimeInterval(24 * 60 * 60)
+        }
+        
+        // Timestamp is in milliseconds
+        let expirationDate = Date(timeIntervalSince1970: timestamp / 1000)
+        return expirationDate
     }
     
     // MARK: - Session Persistence
@@ -240,3 +260,11 @@ actor TronClassAuthService {
         logger.info("✅ Session loaded from storage")
     }
 }
+// MARK: - Array Safe Subscript
+
+private extension Array {
+    subscript(safe index: Index) -> Element? {
+        indices.contains(index) ? self[index] : nil
+    }
+}
+
