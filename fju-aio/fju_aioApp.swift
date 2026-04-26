@@ -1,6 +1,5 @@
 import SwiftUI
 
-@main
 struct fju_aioApp: App {
     @State private var homePreferences = HomePreferences()
 

@@ -47,6 +47,7 @@ struct SettingsView: View {
 
 struct DebugView: View {
     @Environment(\.fjuService) private var service
+    @Environment(AuthenticationManager.self) private var authManager
     @State private var courses: [Course] = []
     @State private var grades: [Grade] = []
     @State private var gpaSummary: GPASummary?
@@ -58,6 +59,8 @@ struct DebugView: View {
     @State private var availableSemesters: [String] = []
     @State private var isLoading = false
     @State private var checkInEnabled = ModuleRegistry.isCheckInFeatureEnabled
+    @State private var tronClassSession: TronClassSession?
+    @State private var hasStoredCredentials = false
     
     var body: some View {
         List {
@@ -67,6 +70,62 @@ struct DebugView: View {
                 InfoRow(label: "iOS 版本", value: UIDevice.current.systemVersion)
                 InfoRow(label: "裝置型號", value: UIDevice.current.model)
                 InfoRow(label: "裝置名稱", value: UIDevice.current.name)
+            }
+            
+            Section("認證狀態") {
+                InfoRow(label: "登入狀態", value: authManager.isAuthenticated ? "已登入" : "未登入")
+                if let userId = authManager.currentUserId {
+                    InfoRow(label: "用戶 ID", value: "\(userId)")
+                }
+                InfoRow(label: "儲存的憑證", value: hasStoredCredentials ? "存在" : "不存在")
+            }
+            
+            // TronClass Session
+            if let session = tronClassSession {
+                Section("TronClass Session") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Session ID")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(session.sessionId)
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                    }
+                    
+                    InfoRow(label: "用戶 ID", value: "\(session.userId)")
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("過期時間")
+                            Spacer()
+                            Text(session.expiresAt.formatted(date: .abbreviated, time: .shortened))
+                                .foregroundStyle(.secondary)
+                        }
+                        HStack {
+                            Text("狀態")
+                            Spacer()
+                            Text(session.isExpired ? "已過期" : "有效")
+                                .foregroundStyle(session.isExpired ? .red : .green)
+                        }
+                    }
+                    
+                    if !session.isExpired {
+                        let timeRemaining = session.expiresAt.timeIntervalSince(Date())
+                        let hours = Int(timeRemaining) / 3600
+                        let minutes = (Int(timeRemaining) % 3600) / 60
+                        InfoRow(label: "剩餘時間", value: "\(hours)小時 \(minutes)分鐘")
+                    }
+                }
+            }
+            
+            // Placeholder for future sessions
+            Section("其他 API Sessions") {
+                Text("校務系統 Session - 尚未實作")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("圖書館系統 Session - 尚未實作")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             
             Section("服務狀態") {
@@ -153,7 +212,7 @@ struct DebugView: View {
                         Text(assignment.courseName)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
-                        Text("截止: \(assignment.dueDate.formatted(date: .abbreviated, time: .shortened))")
+        Text("截止: \(assignment.dueDate.formatted(date: .abbreviated, time: .shortened))")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -200,12 +259,21 @@ struct DebugView: View {
                     }
                 }
                 .disabled(isLoading)
+                
+                Button("重新載入 TronClass Session") {
+                    Task {
+                        await loadTronClassSession()
+                    }
+                }
+                .disabled(isLoading)
             }
         }
         .navigationTitle("除錯資訊")
         .navigationBarTitleDisplayMode(.inline)
         .task {
             await loadAllData()
+            await loadTronClassSession()
+            checkCredentials()
         }
         .overlay {
             if isLoading {
@@ -246,6 +314,19 @@ struct DebugView: View {
         
         isLoading = false
     }
+    
+    private func loadTronClassSession() async {
+        do {
+            tronClassSession = try await authManager.getValidSession()
+        } catch {
+            print("無法載入 TronClass Session: \(error)")
+            tronClassSession = nil
+        }
+    }
+    
+    private func checkCredentials() {
+        hasStoredCredentials = CredentialStore.shared.hasLDAPCredentials()
+    }
 }
 
 struct InfoRow: View {
@@ -267,6 +348,7 @@ struct InfoRow: View {
     NavigationStack {
         SettingsView()
             .environment(\.fjuService, MockFJUService())
+            .environment(AuthenticationManager())
     }
 }
 
