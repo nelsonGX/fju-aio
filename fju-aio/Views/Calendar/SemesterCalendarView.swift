@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SemesterCalendarView: View {
     @Environment(\.fjuService) private var service
+    @Environment(SyncStatusManager.self) private var syncStatus
     @State private var events: [CalendarEvent] = []
     @State private var isLoading = true
     @State private var selectedCategory: CalendarEvent.EventCategory?
@@ -117,9 +118,11 @@ struct SemesterCalendarView: View {
         errorMessage = nil
 
         do {
-            let fetched = try await service.fetchCalendarEvents(semester: semester)
-            events = fetched
-            cache.setCalendarEvents(fetched, semester: semester)
+            try await syncStatus.withSync("正在載入行事曆…") {
+                let fetched = try await service.fetchCalendarEvents(semester: semester)
+                events = fetched
+                cache.setCalendarEvents(fetched, semester: semester)
+            }
         } catch {
             errorMessage = "載入失敗: \(error.localizedDescription)"
         }

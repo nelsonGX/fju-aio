@@ -11,16 +11,26 @@ final class SyncStatusManager {
 
     private init() {}
 
+    /// Whether the sync banner is enabled. Persisted across launches.
+    var isEnabled: Bool {
+        get { UserDefaults.standard.object(forKey: "syncStatusBannerEnabled") as? Bool ?? true }
+        set {
+            UserDefaults.standard.set(newValue, forKey: "syncStatusBannerEnabled")
+            if !newValue { activeCount = 0 }
+        }
+    }
+
     /// Human-readable label for the most recently started operation.
     private(set) var message: String = ""
 
-    /// True whenever at least one operation is in flight.
-    var isSyncing: Bool { activeCount > 0 }
+    /// True whenever at least one operation is in flight and the banner is enabled.
+    var isSyncing: Bool { isEnabled && activeCount > 0 }
 
     private var activeCount: Int = 0
 
     /// Begin a named operation. Must be balanced by a call to `end()`.
     func begin(_ message: String) {
+        guard isEnabled else { return }
         activeCount += 1
         self.message = message
     }

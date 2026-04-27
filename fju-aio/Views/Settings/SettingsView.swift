@@ -9,6 +9,7 @@ struct SettingsView: View {
     @State private var sisSession: SISSession?
     @State private var isLoadingSession = false
     private let notificationManager = CourseNotificationManager.shared
+    private let syncStatus = SyncStatusManager.shared
     @AppStorage("preferredMapsApp") private var preferredMapsApp = "apple"
     
     var body: some View {
@@ -78,6 +79,13 @@ struct SettingsView: View {
                     ))
                 }
             }
+            Section("一般") {
+                Toggle("顯示同步狀態列", isOn: Binding(
+                    get: { syncStatus.isEnabled },
+                    set: { syncStatus.isEnabled = $0 }
+                ))
+            }
+
             Section("導航") {
                 Picker("預設導航應用程式", selection: $preferredMapsApp) {
                     Text("Apple 地圖").tag("apple")
