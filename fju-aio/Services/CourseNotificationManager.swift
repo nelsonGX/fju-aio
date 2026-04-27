@@ -392,6 +392,7 @@ final class CourseNotificationManager {
         let semesterEndDate = overrideSemesterEndDate ?? estimatedSemesterEndDate(for: semester, from: now)
         guard semesterEndDate > now else {
             print("[CourseNotification] 學期已結束，跳過伺服器排程 semester=\(semester), until=\(semesterEndDate)")
+            await cancelRemoteSchedules(semester: semester, deactivateToken: false)
             return
         }
         print("[CourseNotification] 同步課程排程 semester=\(semester), courses=\(courses.count), from=\(semesterStartDate), until=\(semesterEndDate)")
@@ -555,9 +556,6 @@ final class CourseNotificationManager {
         }
 
         let estimated = calendar.date(from: comps) ?? now
-        if estimated <= now {
-            return calendar.date(byAdding: .day, value: 120, to: now) ?? now.addingTimeInterval(120 * 24 * 60 * 60)
-        }
         return estimated
     }
 
@@ -639,6 +637,7 @@ final class CourseNotificationManager {
     private struct CancelRemoteSchedulesPayload: Encodable {
         let userId: String
         let deviceId: String
+        let semester: String?
         let deactivateToken: Bool
     }
 
@@ -928,15 +927,20 @@ final class CourseNotificationManager {
         return generated
     }
 
-    private func cancelRemoteSchedules(deactivateToken: Bool) async {
+    private func cancelRemoteSchedules(semester: String? = nil, deactivateToken: Bool) async {
         let identity = await notificationIdentity()
         let payload = CancelRemoteSchedulesPayload(
             userId: identity.userId,
             deviceId: identity.deviceId,
+            semester: semester,
             deactivateToken: deactivateToken
         )
         if await postJSON(to: "\(serverBaseURL)/push-to-start/cancel", body: payload) {
-            print("[CourseNotification] ✅ 已取消伺服器未來 Live Activity 排程")
+            if let semester {
+                print("[CourseNotification] ✅ 已取消伺服器 \(semester) 未來 Live Activity 排程")
+            } else {
+                print("[CourseNotification] ✅ 已取消伺服器未來 Live Activity 排程")
+            }
         } else {
             print("[CourseNotification] ⚠️ 取消伺服器 Live Activity 排程失敗")
         }

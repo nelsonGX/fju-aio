@@ -9,6 +9,8 @@ struct HomeView: View {
     @State private var isEditing = false
     @State private var selectedCourse: Course?
     @State private var lastNotificationSyncSignature: String?
+    @State private var mapHighlightLocation: String? = nil
+    @State private var navigateToCampusMap = false
 
     private let cache = AppCache.shared
 
@@ -39,8 +41,17 @@ struct HomeView: View {
             HomeEditView()
         }
         .sheet(item: $selectedCourse) { course in
-            CourseDetailSheet(course: course)
-                .presentationDetents([.medium])
+            CourseDetailSheet(course: course, onOpenMap: {
+                mapHighlightLocation = course.location
+                selectedCourse = nil
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    navigateToCampusMap = true
+                }
+            })
+            .presentationDetents([.medium])
+        }
+        .navigationDestination(isPresented: $navigateToCampusMap) {
+            CampusMapView(highlightLocation: mapHighlightLocation)
         }
         .task {
             await loadTodayCourses(forceRefresh: false)
