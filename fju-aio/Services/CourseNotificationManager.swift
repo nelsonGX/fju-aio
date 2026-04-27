@@ -393,6 +393,7 @@ final class CourseNotificationManager {
 
     private struct PushToStartRegistrationPayload: Encodable {
         let pushToStartToken: String
+        let clientUnixTime: Int
     }
 
     private struct PushToStartFullCyclePayload: Encodable {
@@ -410,7 +411,10 @@ final class CourseNotificationManager {
         Task {
             for await tokenData in Activity<CourseActivityAttributes>.pushToStartTokenUpdates {
                 let tokenHex = hexString(from: tokenData)
-                let payload = PushToStartRegistrationPayload(pushToStartToken: tokenHex)
+                let payload = PushToStartRegistrationPayload(
+                    pushToStartToken: tokenHex,
+                    clientUnixTime: unixSeconds(Date())
+                )
                 if await postJSON(to: "\(serverBaseURL)/push-to-start/register", body: payload) {
                     print("[CourseNotification] ✅ 已向伺服器註冊 push-to-start token")
                 } else {
