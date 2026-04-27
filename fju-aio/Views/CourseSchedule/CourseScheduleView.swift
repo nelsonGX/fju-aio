@@ -2,6 +2,7 @@ import SwiftUI
 
 struct CourseScheduleView: View {
     @Environment(\.fjuService) private var service
+    @Environment(SyncStatusManager.self) private var syncStatus
     @State private var courses: [Course] = []
     @State private var isLoading = true
     @State private var availableSemesters: [String] = []
@@ -234,9 +235,11 @@ struct CourseScheduleView: View {
 
         isLoading = true
         do {
-            let fetched = try await service.fetchCourses(semester: selectedSemester)
-            courses = fetched
-            cache.setCourses(fetched, semester: selectedSemester)
+            try await syncStatus.withSync("正在載入課表…") {
+                let fetched = try await service.fetchCourses(semester: selectedSemester)
+                courses = fetched
+                cache.setCourses(fetched, semester: selectedSemester)
+            }
         } catch {
             courses = []
         }

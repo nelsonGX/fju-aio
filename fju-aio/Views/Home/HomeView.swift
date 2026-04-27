@@ -3,6 +3,7 @@ import SwiftUI
 struct HomeView: View {
     @Environment(\.fjuService) private var service
     @Environment(HomePreferences.self) private var preferences
+    @Environment(SyncStatusManager.self) private var syncStatus
     @State private var todayCourses: [Course] = []
     @State private var isLoading = true
     @State private var isEditing = false
@@ -171,23 +172,23 @@ struct HomeView: View {
 
         isLoading = true
         do {
-            let semesters = try await service.fetchAvailableSemesters()
-            let currentSemester = semesters.first ?? "114-2"
-            let all = try await service.fetchCourses(semester: currentSemester)
-            let calendarEvents = (try? await service.fetchCalendarEvents(semester: currentSemester)) ?? []
+            try await syncStatus.withSync("正在載入課程…") {
+                let semesters = try await service.fetchAvailableSemesters()
+                let currentSemester = semesters.first ?? "114-2"
+                let all = try await service.fetchCourses(semester: currentSemester)
+                let calendarEvents = (try? await service.fetchCalendarEvents(semester: currentSemester)) ?? []
 
-            cache.setSemesters(semesters)
-            cache.setCourses(all, semester: currentSemester)
-            cache.setCalendarEvents(calendarEvents, semester: currentSemester)
+                cache.setSemesters(semesters)
+                cache.setCourses(all, semester: currentSemester)
+                cache.setCalendarEvents(calendarEvents, semester: currentSemester)
 
-            let todayKey = todayDayString()
-            todayCourses = all.filter { $0.dayOfWeek == todayKey }
-                .sorted { $0.startPeriod < $1.startPeriod }
-            isLoading = false
-            scheduleCourseNotifications(for: all, calendarEvents: calendarEvents)
-        } catch {
-            isLoading = false
-        }
+                let todayKey = todayDayString()
+                todayCourses = all.filter { $0.dayOfWeek == todayKey }
+                    .sorted { $0.startPeriod < $1.startPeriod }
+                scheduleCourseNotifications(for: all, calendarEvents: calendarEvents)
+            }
+        } catch {}
+        isLoading = false
     }
 
     private func scheduleCourseNotifications(for courses: [Course], calendarEvents: [CalendarEvent]) {

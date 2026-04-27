@@ -411,7 +411,10 @@ final class CourseNotificationManager {
             semesterEndDate: unixSeconds(semesterEndDate),
             schedules: schedules
         )
-        if await postJSON(to: "\(serverBaseURL)/push-to-start/sync-semester", body: payload) {
+        await MainActor.run { SyncStatusManager.shared.begin("正在同步課程通知排程…") }
+        let success = await postJSON(to: "\(serverBaseURL)/push-to-start/sync-semester", body: payload)
+        await MainActor.run { SyncStatusManager.shared.end() }
+        if success {
             print("[CourseNotification] ✅ 已向伺服器同步整學期 Live Activities: \(semester) \(schedules.count)")
         } else {
             print("[CourseNotification] ⚠️ 課程 Live Activity 伺服器排程失敗")

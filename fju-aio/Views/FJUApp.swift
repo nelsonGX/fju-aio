@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct FJUApp: App {
     @State private var authManager = AuthenticationManager()
+    private let syncStatus = SyncStatusManager.shared
 
     init() {
         _ = CourseNotificationManager.shared
@@ -15,6 +16,7 @@ struct FJUApp: App {
                     .environment(\.fjuService, FJUService.shared)
                     .environment(HomePreferences())
                     .environment(authManager)
+                    .environment(syncStatus)
             } else {
                 LoginView()
                     .environment(authManager)

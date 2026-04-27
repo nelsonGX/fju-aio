@@ -2,6 +2,7 @@ import SwiftUI
 
 struct GradesView: View {
     @Environment(\.fjuService) private var service
+    @Environment(SyncStatusManager.self) private var syncStatus
     @State private var grades: [Grade] = []
     @State private var gpaSummary: GPASummary?
     @State private var semesters: [String] = []
@@ -91,21 +92,23 @@ struct GradesView: View {
 
         isLoading = true
         do {
-            async let fetchedSemesters = service.fetchAvailableSemesters()
-            async let fetchedGrades = service.fetchGrades(semester: selectedSemester)
-            async let fetchedSummary = service.fetchGPASummary(semester: selectedSemester)
+            try await syncStatus.withSync("正在載入成績…") {
+                async let fetchedSemesters = service.fetchAvailableSemesters()
+                async let fetchedGrades = service.fetchGrades(semester: selectedSemester)
+                async let fetchedSummary = service.fetchGPASummary(semester: selectedSemester)
 
-            let newSemesters = try await fetchedSemesters
-            let newGrades = try await fetchedGrades
-            let newSummary = try await fetchedSummary
+                let newSemesters = try await fetchedSemesters
+                let newGrades = try await fetchedGrades
+                let newSummary = try await fetchedSummary
 
-            semesters = newSemesters
-            grades = newGrades
-            gpaSummary = newSummary
+                semesters = newSemesters
+                grades = newGrades
+                gpaSummary = newSummary
 
-            cache.setSemesters(newSemesters)
-            cache.setGrades(newGrades, semester: selectedSemester)
-            cache.setGPASummary(newSummary, semester: selectedSemester)
+                cache.setSemesters(newSemesters)
+                cache.setGrades(newGrades, semester: selectedSemester)
+                cache.setGPASummary(newSummary, semester: selectedSemester)
+            }
         } catch {}
         isLoading = false
     }
