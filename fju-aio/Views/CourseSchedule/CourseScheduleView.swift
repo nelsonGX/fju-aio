@@ -232,64 +232,9 @@ struct CourseScheduleView: View {
 
         // Schedule notifications and Live Activity in the background after UI is shown
         let snapshot = courses
-        Task.detached(priority: .background) {
+        Task(priority: .background) {
             await CourseNotificationManager.shared.scheduleAll(for: snapshot)
         }
-        Task {
-            await startLiveActivityIfNeeded()
-        }
-    }
-
-    /// Starts a Live Activity for any course that is currently active or about to start (within 20 min).
-    @MainActor
-    private func startLiveActivityIfNeeded() async {
-        let now = Date()
-        let calendar = Calendar.current
-        let todayWeekday = calendar.component(.weekday, from: now) // 1=Sun … 7=Sat
-
-        for course in courses {
-            // Only consider today's courses
-            guard course.dayOfWeekNumber == weekdayToCourseDay(todayWeekday) else { continue }
-
-            guard course.startPeriod >= 1, course.startPeriod <= FJUPeriod.periodTimes.count,
-                  course.endPeriod   >= 1, course.endPeriod   <= FJUPeriod.periodTimes.count else { continue }
-
-            let startStr = FJUPeriod.periodTimes[course.startPeriod - 1].start
-            let endStr   = FJUPeriod.periodTimes[course.endPeriod   - 1].end
-            guard let startDate = timeToDate(startStr, on: now, calendar: calendar),
-                  let endDate   = timeToDate(endStr,   on: now, calendar: calendar) else { continue }
-
-            let windowStart = startDate.addingTimeInterval(-20 * 60) // 20 min before
-            if now >= windowStart && now < endDate {
-                await CourseNotificationManager.shared.startLiveActivity(for: course)
-                break // one Live Activity at a time
-            }
-        }
-    }
-
-    /// Converts Calendar.weekday (1=Sun) to course dayOfWeekNumber (1=Mon…5=Fri).
-    private func weekdayToCourseDay(_ weekday: Int) -> Int {
-        // Calendar: 1=Sun,2=Mon…7=Sat → course: 1=Mon…7=Sun
-        switch weekday {
-        case 2: return 1
-        case 3: return 2
-        case 4: return 3
-        case 5: return 4
-        case 6: return 5
-        case 7: return 6
-        case 1: return 7
-        default: return 0
-        }
-    }
-
-    private func timeToDate(_ timeString: String, on date: Date, calendar: Calendar) -> Date? {
-        let parts = timeString.split(separator: ":").compactMap { Int($0) }
-        guard parts.count == 2 else { return nil }
-        var comps = calendar.dateComponents([.year, .month, .day], from: date)
-        comps.hour = parts[0]
-        comps.minute = parts[1]
-        comps.second = 0
-        return calendar.date(from: comps)
     }
 
     private func semesterDisplayName(_ semester: String) -> String {

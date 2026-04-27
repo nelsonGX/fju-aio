@@ -69,6 +69,8 @@ final class CourseNotificationManager {
     /// Starts a Live Activity if a class is active or about to start today.
     func scheduleAll(for courses: [Course]) async {
         guard isEnabled, notifyStart || notifyBefore else { return }
+        lastCourseSnapshot = courses
+        await scheduleRemoteCourseActivities(for: courses)
         await startLiveActivityIfNeeded(for: courses)
     }
 
@@ -82,8 +84,6 @@ final class CourseNotificationManager {
             print("[CourseNotification] Live Activities 未啟用")
             return false
         }
-
-        await endLiveActivity(for: course)
 
         let now = Date()
         let calendar = Calendar.current
@@ -100,6 +100,10 @@ final class CourseNotificationManager {
             print("[CourseNotification] 課程已結束，跳過 Live Activity")
             return false
         }
+        guard phase != .before || notifyBefore else { return false }
+        guard phase != .during || notifyStart else { return false }
+
+        await endLiveActivity(for: course)
 
         let attributes = CourseActivityAttributes(
             courseName: course.name,
@@ -328,6 +332,7 @@ final class CourseNotificationManager {
     // MARK: - Private helpers
 
     private var activeActivityIDs: [String: String] = [:]
+    private var lastCourseSnapshot: [Course] = []
 
     private func runningActivity(for course: Course) -> Activity<CourseActivityAttributes>? {
         Activity<CourseActivityAttributes>.activities.first {
@@ -345,12 +350,87 @@ final class CourseNotificationManager {
             guard course.dayOfWeekNumber == weekdayToCourseDay(todayWeekday) else { continue }
             guard let startDate = courseDate(for: course, on: now, calendar: calendar, useEndTime: false),
                   let endDate   = courseDate(for: course, on: now, calendar: calendar, useEndTime: true) else { continue }
-            let windowStart = startDate.addingTimeInterval(-Double(minutesBefore) * 60)
+            let windowStart = notifyBefore
+                ? startDate.addingTimeInterval(-Double(minutesBefore) * 60)
+                : startDate
             if now >= windowStart && now < endDate {
-                await startLiveActivity(for: course)
-                break
+                let started = await startLiveActivity(for: course)
+                if started { break }
             }
         }
+    }
+
+    private func scheduleRemoteCourseActivities(for courses: [Course]) async {
+        let now = Date()
+        let schedules = Array(courses.compactMap { remoteSchedule(for: $0, from: now) }.prefix(20))
+
+        guard !schedules.isEmpty else {
+            print("[CourseNotification] 沒有需要伺服器排程的課程 Live Activity")
+            return
+        }
+
+        let payload = PushToStartSchedulePayload(schedules: schedules)
+        if await postJSON(to: "\(serverBaseURL)/push-to-start/schedule", body: payload) {
+            print("[CourseNotification] ✅ 已向伺服器排程課程 Live Activities: \(schedules.count)")
+        } else {
+            print("[CourseNotification] ⚠️ 課程 Live Activity 伺服器排程失敗")
+        }
+    }
+
+    private func remoteSchedule(for course: Course, from now: Date) -> RemoteCourseActivitySchedule? {
+        guard let occurrence = nextOccurrence(for: course, from: now) else { return nil }
+
+        let showBefore = notifyBefore
+        let showDuring = notifyStart
+        guard showBefore || showDuring else { return nil }
+
+        let pushDate = showBefore
+            ? occurrence.startDate.addingTimeInterval(-Double(minutesBefore) * 60)
+            : occurrence.startDate
+        let initialPhase: CoursePhase = showBefore ? .before : .during
+        let endTransitionDate = showDuring ? occurrence.endDate : occurrence.startDate
+        let dismissalDate = notifyEnd && showDuring
+            ? occurrence.endDate.addingTimeInterval(liveActivityDismissalDelay)
+            : endTransitionDate
+
+        guard pushDate.timeIntervalSince(now) > 5 else { return nil }
+        guard dismissalDate.timeIntervalSince(now) > 5 else { return nil }
+
+        return RemoteCourseActivitySchedule(
+            courseName: course.name,
+            courseId: course.id,
+            location: course.location,
+            instructor: course.instructor,
+            pushAt: unixSeconds(pushDate),
+            classStartDate: unixSeconds(occurrence.startDate),
+            classEndDate: unixSeconds(occurrence.endDate),
+            initialPhase: initialPhase,
+            endAt: unixSeconds(endTransitionDate),
+            dismissalDate: unixSeconds(dismissalDate)
+        )
+    }
+
+    private func nextOccurrence(for course: Course, from now: Date) -> (startDate: Date, endDate: Date)? {
+        let calendar = Calendar.current
+        let startOfToday = calendar.startOfDay(for: now)
+
+        for dayOffset in 0...7 {
+            guard let date = calendar.date(byAdding: .day, value: dayOffset, to: startOfToday) else { continue }
+            let weekday = calendar.component(.weekday, from: date)
+            guard course.dayOfWeekNumber == weekdayToCourseDay(weekday),
+                  let startDate = courseDate(for: course, on: date, calendar: calendar, useEndTime: false),
+                  let endDate = courseDate(for: course, on: date, calendar: calendar, useEndTime: true),
+                  endDate > startDate else { continue }
+
+            let activeUntil = notifyStart
+                ? (notifyEnd ? endDate.addingTimeInterval(liveActivityDismissalDelay) : endDate)
+                : startDate
+            if activeUntil.timeIntervalSince(now) > 5 {
+                return (startDate, endDate)
+            }
+        }
+
+        return nil
     }
 
     private func courseDate(for course: Course, on referenceDate: Date, calendar: Calendar, useEndTime: Bool) -> Date? {
@@ -362,14 +442,6 @@ final class CourseNotificationManager {
         var comps = calendar.dateComponents([.year, .month, .day], from: referenceDate)
         comps.hour = parts[0]; comps.minute = parts[1]; comps.second = 0
         return calendar.date(from: comps)
-    }
-
-    private func isoWeekday(for chineseDay: String) -> Int? {
-        switch chineseDay {
-        case "一": return 2; case "二": return 3; case "三": return 4
-        case "四": return 5; case "五": return 6; case "六": return 7
-        case "日": return 1; default: return nil
-        }
     }
 
     private func weekdayToCourseDay(_ weekday: Int) -> Int {
@@ -403,6 +475,23 @@ final class CourseNotificationManager {
         let instructor: String
     }
 
+    private struct PushToStartSchedulePayload: Encodable {
+        let schedules: [RemoteCourseActivitySchedule]
+    }
+
+    private struct RemoteCourseActivitySchedule: Encodable {
+        let courseName: String
+        let courseId: String
+        let location: String
+        let instructor: String
+        let pushAt: Int
+        let classStartDate: Int
+        let classEndDate: Int
+        let initialPhase: CoursePhase
+        let endAt: Int?
+        let dismissalDate: Int?
+    }
+
     private struct ServerErrorResponse: Decodable {
         let error: String
     }
@@ -417,6 +506,9 @@ final class CourseNotificationManager {
                 )
                 if await postJSON(to: "\(serverBaseURL)/push-to-start/register", body: payload) {
                     print("[CourseNotification] ✅ 已向伺服器註冊 push-to-start token")
+                    if !lastCourseSnapshot.isEmpty {
+                        await scheduleRemoteCourseActivities(for: lastCourseSnapshot)
+                    }
                 } else {
                     print("[CourseNotification] ⚠️ push-to-start token 註冊失敗")
                 }
@@ -443,25 +535,32 @@ final class CourseNotificationManager {
         for activity: Activity<CourseActivityAttributes>,
         state: CourseActivityAttributes.ContentState
     ) {
-        scheduleLocalUpdate(
-            for: activity,
-            phase: .during,
-            startDate: state.classStartDate,
-            endDate: state.classEndDate,
-            at: state.classStartDate
-        )
+        let endTransitionDate = notifyStart ? state.classEndDate : state.classStartDate
+        let dismissalDate = notifyEnd && notifyStart
+            ? state.classEndDate.addingTimeInterval(liveActivityDismissalDelay)
+            : endTransitionDate
+
+        if notifyStart {
+            scheduleLocalUpdate(
+                for: activity,
+                phase: .during,
+                startDate: state.classStartDate,
+                endDate: state.classEndDate,
+                at: state.classStartDate
+            )
+        }
         scheduleLocalUpdate(
             for: activity,
             phase: .ended,
             startDate: state.classStartDate,
             endDate: state.classEndDate,
-            at: state.classEndDate
+            at: endTransitionDate
         )
         scheduleLocalEnd(
             for: activity,
             startDate: state.classStartDate,
             endDate: state.classEndDate,
-            at: state.classEndDate.addingTimeInterval(liveActivityDismissalDelay)
+            at: dismissalDate
         )
     }
 
