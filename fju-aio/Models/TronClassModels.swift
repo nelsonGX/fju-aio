@@ -60,6 +60,38 @@ struct TodoItem: Codable, Sendable, Identifiable {
     let is_locked: Bool
     let prerequisites: [Prerequisite]
     let not_scored_num: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case type
+        case course_id
+        case course_code
+        case course_name
+        case course_type
+        case end_time
+        case is_student
+        case is_locked
+        case prerequisites
+        case not_scored_num
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        id = try container.decode(Int.self, forKey: .id)
+        title = try container.decode(String.self, forKey: .title)
+        type = try container.decode(TodoType.self, forKey: .type)
+        course_id = try container.decode(Int.self, forKey: .course_id)
+        course_code = try container.decode(String.self, forKey: .course_code)
+        course_name = try container.decode(String.self, forKey: .course_name)
+        course_type = try container.decode(Int.self, forKey: .course_type)
+        end_time = try container.decode(String.self, forKey: .end_time)
+        is_student = try container.decode(Bool.self, forKey: .is_student)
+        is_locked = try container.decodeIfPresent(Bool.self, forKey: .is_locked) ?? false
+        prerequisites = try container.decodeIfPresent([Prerequisite].self, forKey: .prerequisites) ?? []
+        not_scored_num = try container.decodeIfPresent(Int.self, forKey: .not_scored_num)
+    }
     
     var endDate: Date? {
         ISO8601DateFormatter().date(from: end_time)
@@ -112,4 +144,3 @@ enum TronClassAPIError: LocalizedError {
         }
     }
 }
-
