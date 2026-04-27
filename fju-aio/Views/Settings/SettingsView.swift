@@ -799,13 +799,14 @@ struct DebugView: View {
 }
 
 private final class NoRedirectDelegate: NSObject, URLSessionTaskDelegate {
-    func urlSession(
+    nonisolated func urlSession(
         _ session: URLSession,
         task: URLSessionTask,
         willPerformHTTPRedirection response: HTTPURLResponse,
-        newRequest request: URLRequest
-    ) async -> URLRequest? {
-        nil // block all redirects
+        newRequest request: URLRequest,
+        completionHandler: @escaping @Sendable (URLRequest?) -> Void
+    ) {
+        completionHandler(nil)
     }
 }
 
