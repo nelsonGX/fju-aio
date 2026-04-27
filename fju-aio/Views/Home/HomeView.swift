@@ -41,7 +41,7 @@ struct HomeView: View {
                 .presentationDetents([.medium])
         }
         .task {
-            await loadTodayCourses(forceRefresh: false)
+            await loadTodayCourses(forceRefresh: true)
         }
     }
 
@@ -159,10 +159,12 @@ struct HomeView: View {
             if let cachedSemesters = cache.getSemesters(),
                let currentSemester = cachedSemesters.first,
                let cachedCourses = cache.getCourses(semester: currentSemester) {
+                let cachedCalendarEvents = cache.getCalendarEvents(semester: currentSemester) ?? []
                 todayCourses = cachedCourses
                     .filter { $0.dayOfWeek == todayKey }
                     .sorted { $0.startPeriod < $1.startPeriod }
                 isLoading = false
+                scheduleCourseNotifications(for: cachedCourses, calendarEvents: cachedCalendarEvents)
                 return
             }
         }
@@ -172,17 +174,38 @@ struct HomeView: View {
             let semesters = try await service.fetchAvailableSemesters()
             let currentSemester = semesters.first ?? "114-2"
             let all = try await service.fetchCourses(semester: currentSemester)
+            let calendarEvents = (try? await service.fetchCalendarEvents(semester: currentSemester)) ?? []
 
             cache.setSemesters(semesters)
             cache.setCourses(all, semester: currentSemester)
+            cache.setCalendarEvents(calendarEvents, semester: currentSemester)
 
             let todayKey = todayDayString()
             todayCourses = all.filter { $0.dayOfWeek == todayKey }
                 .sorted { $0.startPeriod < $1.startPeriod }
             isLoading = false
+            scheduleCourseNotifications(for: all, calendarEvents: calendarEvents)
         } catch {
             isLoading = false
         }
+    }
+
+    private func scheduleCourseNotifications(for courses: [Course], calendarEvents: [CalendarEvent]) {
+        let snapshot = courses
+        let semesterEndDate = flexibleLearningWeekStart(from: calendarEvents)
+        Task(priority: .background) {
+            await CourseNotificationManager.shared.scheduleAll(
+                for: snapshot,
+                semesterEndDate: semesterEndDate
+            )
+        }
+    }
+
+    private func flexibleLearningWeekStart(from events: [CalendarEvent]) -> Date? {
+        events
+            .filter { $0.title.localizedStandardContains("彈性多元學習週") }
+            .map(\.startDate)
+            .min()
     }
 
     private func todayDayString() -> String {

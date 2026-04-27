@@ -228,6 +228,7 @@ struct CourseScheduleView: View {
         if !forceRefresh, let cached = cache.getCourses(semester: selectedSemester) {
             courses = cached
             isLoading = false
+            scheduleCourseNotifications(for: cached)
             return
         }
 
@@ -242,6 +243,10 @@ struct CourseScheduleView: View {
         isLoading = false
 
         // Schedule notifications and Live Activity in the background after UI is shown
+        scheduleCourseNotifications(for: courses)
+    }
+
+    private func scheduleCourseNotifications(for courses: [Course]) {
         let snapshot = courses
         Task(priority: .background) {
             await CourseNotificationManager.shared.scheduleAll(for: snapshot)
