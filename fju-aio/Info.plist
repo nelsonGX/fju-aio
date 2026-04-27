@@ -33,6 +33,12 @@
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>comgooglemaps</string>
+	</array>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>用於在校園地圖上顯示您的所在位置</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>LSRequiresIPhoneOS</key>

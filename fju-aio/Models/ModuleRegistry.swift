@@ -33,10 +33,9 @@ enum ModuleRegistry {
                   color: .orange, category: .academic,
                   type: .webLink(URL(string: "https://signcourse.fju.edu.tw")!)),
 
-        // Web links (life)
-        AppModule(id: "webMap", name: "校園地圖", icon: "map.fill",
-                  color: .green, category: .life,
-                  type: .webLink(URL(string: "https://www.fju.edu.tw/campusMap.jsp")!)),
+        // In-app features (life)
+        AppModule(id: "campusMap", name: "校園地圖", icon: "map.fill",
+                  color: .green, category: .life, type: .inApp(.campusMap)),
         AppModule(id: "webDorm", name: "宿舍系統", icon: "house.fill",
                   color: .brown, category: .life,
                   type: .webLink(URL(string: "https://dorm.fju.edu.tw/dormstu/#/")!)),

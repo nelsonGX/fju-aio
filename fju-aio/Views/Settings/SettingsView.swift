@@ -9,6 +9,7 @@ struct SettingsView: View {
     @State private var sisSession: SISSession?
     @State private var isLoadingSession = false
     private let notificationManager = CourseNotificationManager.shared
+    @AppStorage("preferredMapsApp") private var preferredMapsApp = "apple"
     
     var body: some View {
         List {
@@ -77,6 +78,13 @@ struct SettingsView: View {
                     ))
                 }
             }
+            Section("導航") {
+                Picker("預設導航應用程式", selection: $preferredMapsApp) {
+                    Text("Apple 地圖").tag("apple")
+                    Text("Google 地圖").tag("google")
+                }
+            }
+
             Section("關於") {
                 HStack {
                     Text("版本")

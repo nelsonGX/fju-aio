@@ -11,6 +11,7 @@ enum AppDestination: Hashable {
     case assignments
     case checkIn
     case enrollmentCertificate
+    case campusMap
 }
 
 // MARK: - Tab Enum
@@ -65,6 +66,7 @@ struct ContentView: View {
         case .assignments:      AssignmentsView()
         case .checkIn:                  CheckInView()
         case .enrollmentCertificate:    EnrollmentCertificateView()
+        case .campusMap:                CampusMapView()
         }
     }
 }

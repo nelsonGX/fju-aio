@@ -7,6 +7,8 @@ struct CourseScheduleView: View {
     @State private var availableSemesters: [String] = []
     @State private var selectedSemester: String = ""
     @State private var selectedCourse: Course?
+    @State private var mapHighlightLocation: String? = nil
+    @State private var navigateToCampusMap = false
 
     private let periodHeight: CGFloat = 56
     private let timeColumnWidth: CGFloat = 38
@@ -69,8 +71,17 @@ struct CourseScheduleView: View {
             }
         }
         .sheet(item: $selectedCourse) { course in
-            CourseDetailSheet(course: course)
-                .presentationDetents([.medium])
+            CourseDetailSheet(course: course, onOpenMap: {
+                mapHighlightLocation = course.location
+                selectedCourse = nil
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    navigateToCampusMap = true
+                }
+            })
+            .presentationDetents([.medium])
+        }
+        .navigationDestination(isPresented: $navigateToCampusMap) {
+            CampusMapView(highlightLocation: mapHighlightLocation)
         }
         .task {
             await loadSemesters(forceRefresh: false)
