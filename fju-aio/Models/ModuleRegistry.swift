@@ -1,6 +1,7 @@
 import SwiftUI
 
 enum ModuleRegistry {
+    static let checkInFeatureEnabledKey = "checkInFeatureEnabled"
 
     // MARK: - All Modules
 
@@ -54,8 +55,10 @@ enum ModuleRegistry {
     // MARK: - Grouped by Category
 
     static var groupedByCategory: [(ModuleCategory, [AppModule])] {
-        let checkInEnabled = UserDefaults.standard.bool(forKey: "checkInFeatureEnabled")
-        
+        groupedByCategory(checkInEnabled: isCheckInFeatureEnabled)
+    }
+
+    static func groupedByCategory(checkInEnabled: Bool) -> [(ModuleCategory, [AppModule])] {
         return ModuleCategory.allCases.compactMap { category in
             let modules = allModules.filter { 
                 $0.category == category && (!$0.isHidden || (checkInEnabled && $0.id == "checkIn"))
@@ -79,14 +82,14 @@ enum ModuleRegistry {
     // MARK: - Check-in Feature Toggle
     
     static func enableCheckInFeature() {
-        UserDefaults.standard.set(true, forKey: "checkInFeatureEnabled")
+        UserDefaults.standard.set(true, forKey: checkInFeatureEnabledKey)
     }
     
     static func disableCheckInFeature() {
-        UserDefaults.standard.set(false, forKey: "checkInFeatureEnabled")
+        UserDefaults.standard.set(false, forKey: checkInFeatureEnabledKey)
     }
     
     static var isCheckInFeatureEnabled: Bool {
-        UserDefaults.standard.bool(forKey: "checkInFeatureEnabled")
+        UserDefaults.standard.bool(forKey: checkInFeatureEnabledKey)
     }
 }

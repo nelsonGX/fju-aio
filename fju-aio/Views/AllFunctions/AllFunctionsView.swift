@@ -2,10 +2,11 @@ import SwiftUI
 
 struct AllFunctionsView: View {
     @Environment(\.openURL) private var openURL
+    @AppStorage(ModuleRegistry.checkInFeatureEnabledKey) private var checkInEnabled = false
 
     var body: some View {
         List {
-            ForEach(ModuleRegistry.groupedByCategory, id: \.0) { category, modules in
+            ForEach(ModuleRegistry.groupedByCategory(checkInEnabled: checkInEnabled), id: \.0) { category, modules in
                 Section(category.rawValue) {
                     ForEach(modules) { module in
                         moduleRow(module)

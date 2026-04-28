@@ -165,7 +165,7 @@ struct DebugView: View {
     @State private var assignments: [Assignment] = []
     @State private var availableSemesters: [String] = []
     @State private var isLoading = false
-    @State private var checkInEnabled = ModuleRegistry.isCheckInFeatureEnabled
+    @AppStorage(ModuleRegistry.checkInFeatureEnabledKey) private var checkInEnabled = false
     @State private var tronClassSession: TronClassSession?
     @State private var sisSession: SISSession?
     @State private var estuSession: EstuSession?
@@ -385,18 +385,15 @@ struct DebugView: View {
             
             Section("隱藏功能") {
                 Toggle("啟用課程簽到功能", isOn: $checkInEnabled)
-                    .onChange(of: checkInEnabled) { _, newValue in
-                        if newValue {
-                            ModuleRegistry.enableCheckInFeature()
-                        } else {
-                            ModuleRegistry.disableCheckInFeature()
-                        }
-                    }
-                
+
                 if checkInEnabled {
                     Text("課程簽到功能已啟用，可在「全部功能」中找到")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                }
+
+                NavigationLink("測試簽到 UI") {
+                    CheckInTestView()
                 }
             }
             
@@ -803,6 +800,102 @@ struct DebugView: View {
             endPeriod: 2,
             color: "#007AFF"
         )
+    }
+}
+
+// MARK: - Check-in Test View (Debug only)
+
+struct CheckInTestView: View {
+    private let mockRollcall = Rollcall(
+        rollcall_id: 999999,
+        course_id: 999,
+        course_title: "(TEST) 輔大 AIO 測試課程",
+        rollcall_status: "in_progress",
+        source: "number",
+        is_number: true,
+        is_radar: false,
+        is_expired: false,
+        status: "absent",
+        rollcall_time: "2026-04-27T06:00:00Z",
+        title: "Debug 點名測試",
+        created_by_name: "Debug Teacher",
+        student_rollcall_id: 0
+    )
+
+    @State private var result: RollcallCheckInResult? = nil
+    @State private var showManualEntry = false
+
+    var body: some View {
+        List {
+            Section {
+                Label("模擬模式：不會發送真實 API 請求", systemImage: "flask.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+
+            Section("模擬點名") {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(mockRollcall.course_title)
+                                .font(.headline)
+                            Text(mockRollcall.title)
+                                .font(.caption).foregroundStyle(.secondary)
+                            Text(mockRollcall.created_by_name)
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Text("進行中")
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 8).padding(.vertical, 4)
+                            .background(Color.blue.opacity(0.15))
+                            .foregroundStyle(.blue)
+                            .clipShape(Capsule())
+                    }
+
+                    HStack(spacing: 6) {
+                        Image(systemName: "number.circle.fill").font(.caption)
+                        Text("數字碼點名").font(.caption)
+                    }.foregroundStyle(.secondary)
+
+                    if let result {
+                        switch result {
+                        case .success(let code):
+                            Label("簽到成功！數字碼：\(code)", systemImage: "checkmark.circle.fill")
+                                .font(.subheadline.weight(.semibold)).foregroundStyle(.green)
+                        case .failure(let msg):
+                            Label(msg, systemImage: "xmark.circle.fill")
+                                .font(.subheadline).foregroundStyle(.red)
+                        }
+                    } else {
+                        Button { showManualEntry = true } label: {
+                            Label("輸入數字碼", systemImage: "keyboard").frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent).tint(.pink)
+                    }
+
+                    if result != nil {
+                        Button("重置測試") { result = nil }
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+
+            Section("說明") {
+                Text("• 手動輸入：輸入 1234 會成功，其他會失敗")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .navigationTitle("簽到 UI 測試")
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showManualEntry) {
+            ManualCheckInSheet(rollcall: mockRollcall) { code in
+                showManualEntry = false
+                result = (code == "1234") ? .success(code) : .failure("數字碼錯誤（提示：正確是 1234）")
+            }
+        }
     }
 }
 
