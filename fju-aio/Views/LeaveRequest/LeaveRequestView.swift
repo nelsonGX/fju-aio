@@ -97,8 +97,8 @@ private struct LeaveHistoryView: View {
                         Text("第 2 學期").tag(2)
                     }
                 }
-                .onChange(of: selectedHy) { _, _ in Task { await loadRecords() } }
-                .onChange(of: selectedHt) { _, _ in Task { await loadRecords() } }
+                .onChange(of: selectedHy) { _, _ in records = []; Task { await loadRecords() } }
+                .onChange(of: selectedHt) { _, _ in records = []; Task { await loadRecords() } }
 
                 Section(records.isEmpty ? "尚無記錄" : "\(records.count) 筆記錄") {
                     if records.isEmpty {
@@ -156,6 +156,9 @@ private struct LeaveHistoryView: View {
         do {
             academicYears = try await leaveService.fetchAcademicYears()
             selectedHy = academicYears.first
+        } catch is CancellationError {
+            isLoading = false
+            return
         } catch {
             errorMessage = error.localizedDescription
             isLoading = false
@@ -166,10 +169,13 @@ private struct LeaveHistoryView: View {
 
     private func loadRecords() async {
         guard let hy = selectedHy else { return }
-        isLoading = true
+        isLoading = records.isEmpty   // only show spinner on first load, not on refresh
         errorMessage = nil
         do {
-            records = try await leaveService.fetchLeaveRecords(academicYear: hy.hy, semester: selectedHt)
+            let fetched = try await leaveService.fetchLeaveRecords(academicYear: hy.hy, semester: selectedHt)
+            records = fetched
+        } catch is CancellationError {
+            // Silently ignore task cancellation (e.g. pull-to-refresh interrupted).
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -1586,8 +1592,8 @@ private struct LeaveStatsView: View {
                             Text("第 2 學期").tag(2)
                         }
                     }
-                    .onChange(of: selectedHy) { _, _ in Task { await loadStats() } }
-                    .onChange(of: selectedHt) { _, _ in Task { await loadStats() } }
+                    .onChange(of: selectedHy) { _, _ in statSummary = nil; Task { await loadStats() } }
+                    .onChange(of: selectedHt) { _, _ in statSummary = nil; Task { await loadStats() } }
 
                     if let deadline {
                         Section("請假申請截止日") {
@@ -1693,6 +1699,9 @@ private struct LeaveStatsView: View {
         do {
             academicYears = try await hyTask
             selectedHy = academicYears.first
+        } catch is CancellationError {
+            isLoading = false
+            return
         } catch {
             errorMessage = error.localizedDescription
             isLoading = false
@@ -1704,11 +1713,13 @@ private struct LeaveStatsView: View {
 
     private func loadStats() async {
         guard let hy = selectedHy else { return }
-        isLoading = true
+        isLoading = statSummary == nil   // only show spinner on first load, not on refresh
         errorMessage = nil
-        statSummary = nil
         do {
-            statSummary = try await leaveService.fetchLeaveStat(academicYear: hy.hy, semester: selectedHt)
+            let fetched = try await leaveService.fetchLeaveStat(academicYear: hy.hy, semester: selectedHt)
+            statSummary = fetched
+        } catch is CancellationError {
+            // Silently ignore task cancellation (e.g. pull-to-refresh interrupted).
         } catch {
             errorMessage = error.localizedDescription
         }

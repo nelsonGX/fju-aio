@@ -118,8 +118,6 @@ final class CourseNotificationManager {
         guard phase != .before || notifyBefore else { return false }
         guard phase != .during || notifyStart else { return false }
 
-        await endLiveActivity(for: course)
-
         let attributes = CourseActivityAttributes(
             courseName: course.name,
             courseId: course.id,
@@ -132,6 +130,14 @@ final class CourseNotificationManager {
             classEndDate: endDate
         )
         let content = ActivityContent(state: state, staleDate: endDate.addingTimeInterval(60))
+
+        if let existingActivity = runningActivity(for: course) {
+            activeActivityIDs[course.id] = existingActivity.id
+            await existingActivity.update(content)
+            scheduleLocalPhaseUpdates(for: existingActivity, state: state)
+            print("[CourseNotification] ✅ Live Activity 已存在，更新而非重新啟動: \(existingActivity.id) phase=\(phase.rawValue)")
+            return await registerActivity(existingActivity, courseId: course.id, startDate: startDate, endDate: endDate)
+        }
 
         do {
             let activity = try Activity.request(

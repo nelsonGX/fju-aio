@@ -18,6 +18,11 @@ final class NetworkService: Sendable {
             }
             
             return (data, httpResponse)
+        } catch is CancellationError {
+            // Re-throw cancellation directly so callers can distinguish it from real errors.
+            throw CancellationError()
+        } catch let urlError as URLError where urlError.code == .cancelled {
+            throw CancellationError()
         } catch {
             logger.logResponse(nil, data: nil, error: error)
             throw NetworkError.connectionFailed(error)
