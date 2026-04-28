@@ -1,7 +1,7 @@
 import Foundation
 
 /// A single time slot for a course (day + period range + classroom)
-struct EstuScheduleSlot: Hashable, Sendable {
+nonisolated struct EstuScheduleSlot: Hashable, Sendable {
     let dayOfWeek: String   // "一", "二", etc.
     let weeks: String       // "全", "單", "雙"
     let periods: String     // Raw period string e.g. "D3-D4"
@@ -65,7 +65,7 @@ struct EstuScheduleSlot: Hashable, Sendable {
 }
 
 // Estu-specific course model
-struct EstuCourse: Identifiable, Hashable, Sendable {
+nonisolated struct EstuCourse: Identifiable, Hashable, Sendable {
     let id: String
     let name: String
     let code: String
@@ -76,6 +76,7 @@ struct EstuCourse: Identifiable, Hashable, Sendable {
     let courseType: CourseType
     let schedules: [EstuScheduleSlot]  // Up to 3 time slots
     let notes: String?
+    let outline: CourseOutlineDetails?
     
     enum CourseType: String, Sendable, Hashable {
         case required = "必"
@@ -84,7 +85,8 @@ struct EstuCourse: Identifiable, Hashable, Sendable {
     }
     
     /// Convert to main Course models — one Course per schedule slot
-    func toCourses(color: String = "#007AFF") -> [Course] {
+    func toCourses(color: String = "#007AFF", outline: CourseOutlineDetails? = nil) -> [Course] {
+        let resolvedOutline = outline ?? self.outline
         // Filter to slots that have a valid day
         let validSlots = schedules.filter { $0.dayOfWeekNumber > 0 }
         
@@ -105,6 +107,7 @@ struct EstuCourse: Identifiable, Hashable, Sendable {
                 location: schedules.first?.classroom ?? "",
                 weeks: schedules.first?.weeks ?? "全",
                 notes: notes,
+                outline: resolvedOutline,
                 color: color
             )]
         }
@@ -125,8 +128,25 @@ struct EstuCourse: Identifiable, Hashable, Sendable {
                 location: slot.classroom,
                 weeks: slot.weeks,
                 notes: notes,
+                outline: resolvedOutline,
                 color: color
             )
         }
+    }
+
+    func withOutline(_ outline: CourseOutlineDetails?) -> EstuCourse {
+        EstuCourse(
+            id: id,
+            name: name,
+            code: code,
+            instructor: instructor,
+            credits: credits,
+            semester: semester,
+            department: department,
+            courseType: courseType,
+            schedules: schedules,
+            notes: notes,
+            outline: outline
+        )
     }
 }

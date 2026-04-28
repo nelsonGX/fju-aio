@@ -9,6 +9,7 @@ final class AuthenticationManager {
     
     private let tronClassAuthService = TronClassAuthService.shared
     private let sisAuthService = SISAuthService.shared
+    private let estuAuthService = EstuAuthService.shared
     private let fjuService = FJUService.shared
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.fju.aio", category: "AuthManager")
     
@@ -65,11 +66,14 @@ final class AuthenticationManager {
     func logout() async throws {
         logger.info("👋 Logout initiated")
         isLoading = true
+        defer { isLoading = false }
         
         do {
             await CourseNotificationManager.shared.cancelForLogout()
             try await tronClassAuthService.logout()
             try await sisAuthService.logout()
+            try await estuAuthService.logout()
+            AppCacheCleanupService.clearForLogout()
             isAuthenticated = false
             currentUserId = nil
             logger.info("✅ Logout successful")
@@ -77,8 +81,6 @@ final class AuthenticationManager {
             logger.error("❌ Logout failed: \(error.localizedDescription)")
             throw error
         }
-        
-        isLoading = false
     }
     
     func getValidSession() async throws -> TronClassSession {

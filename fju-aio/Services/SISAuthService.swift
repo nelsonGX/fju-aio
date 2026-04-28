@@ -2,7 +2,7 @@ import Foundation
 import os.log
 
 actor SISAuthService {
-    static let shared = SISAuthService()
+    nonisolated static let shared = SISAuthService()
     
     private let baseURL = "https://travellerlink.fju.edu.tw"
     private let credentialStore = CredentialStore.shared

@@ -2,12 +2,13 @@ import Foundation
 import os.log
 
 actor EstuCourseService {
-    static let shared = EstuCourseService()
+    nonisolated static let shared = EstuCourseService()
     
     private let baseURL = "http://estu.fju.edu.tw"
     private let coursePath = "/CheckSelList/HisListNew.aspx"
     private let authService = EstuAuthService.shared
     private let htmlParser = HTMLParser.shared
+    private let tronClassAPIService = TronClassAPIService.shared
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.fju.aio", category: "EstuCourse")
     
     private init() {}
@@ -23,7 +24,8 @@ actor EstuCourseService {
         
         do {
             let estuCourses = try await fetchCoursesWithSession(session, semesterCode: semesterCode)
-            let courses = estuCourses.flatMap { $0.toCourses() }
+            let enrichedCourses = await enrichWithOutlineData(estuCourses)
+            let courses = enrichedCourses.flatMap { $0.toCourses() }
             logger.info("✅ Fetched \(courses.count, privacy: .public) courses")
             return courses
         } catch let estuError as EstuError {
@@ -31,7 +33,8 @@ actor EstuCourseService {
             logger.warning("⚠️ ESTU error caught (\(estuError.localizedDescription, privacy: .public)), forcing re-login...")
             let freshSession = try await authService.forceRelogin()
             let estuCourses = try await fetchCoursesWithSession(freshSession, semesterCode: semesterCode)
-            let courses = estuCourses.flatMap { $0.toCourses() }
+            let enrichedCourses = await enrichWithOutlineData(estuCourses)
+            let courses = enrichedCourses.flatMap { $0.toCourses() }
             logger.info("✅ Fetched \(courses.count, privacy: .public) courses after re-login")
             return courses
         } catch {
@@ -94,6 +97,46 @@ actor EstuCourseService {
             logger.info("  📖 \(course.name, privacy: .public) [\(slots, privacy: .public)]")
         }
         return courses
+    }
+
+    private func enrichWithOutlineData(_ courses: [EstuCourse]) async -> [EstuCourse] {
+        do {
+            let outlinesByCourseCode = try await tronClassAPIService.getCourseOutlinesByCourseCode()
+            guard !outlinesByCourseCode.isEmpty else { return courses }
+
+            return courses.map { course in
+                let outline = outline(for: course, in: outlinesByCourseCode)
+                if outline == nil {
+                    logger.debug("No outline match for \(course.name, privacy: .public), code=\(course.code, privacy: .public)")
+                }
+                return course.withOutline(outline)
+            }
+        } catch {
+            logger.warning("⚠️ Could not enrich courses with outline data: \(error.localizedDescription, privacy: .public)")
+            return courses
+        }
+    }
+
+    private func outline(for course: EstuCourse, in outlinesByKey: [String: CourseOutlineDetails]) -> CourseOutlineDetails? {
+        let keys = [
+            course.code,
+            course.id,
+            course.name
+        ]
+        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .filter { !$0.isEmpty }
+
+        for key in keys {
+            if let outline = outlinesByKey[key] {
+                return outline
+            }
+        }
+
+        return outlinesByKey.first { entry in
+            keys.contains { courseKey in
+                entry.key.contains(courseKey) || courseKey.contains(entry.key)
+            }
+        }?.value
     }
     
     private func switchSemester(_ session: EstuSession, to semesterCode: String, viewState: EstuViewState) async throws -> String {
@@ -180,7 +223,7 @@ actor EstuCourseService {
     }
 }
 
-private extension Dictionary where Key == String, Value == String {
+private nonisolated extension Dictionary where Key == String, Value == String {
     func percentEncoded() -> Data? {
         // Use a restricted character set for application/x-www-form-urlencoded
         // This must NOT include +, =, &, / which are significant in form encoding
@@ -196,4 +239,3 @@ private extension Dictionary where Key == String, Value == String {
         .data(using: .utf8)
     }
 }
-

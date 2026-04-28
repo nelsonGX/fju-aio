@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Authentication Models
 
-struct TronClassSession: Codable, Sendable {
+nonisolated struct TronClassSession: Codable, Sendable {
     let sessionId: String
     let userId: Int
     let expiresAt: Date
@@ -12,13 +12,13 @@ struct TronClassSession: Codable, Sendable {
     }
 }
 
-struct CASLoginResponse: Codable, Sendable {
+nonisolated struct CASLoginResponse: Codable, Sendable {
     let user_id: Int
 }
 
 // MARK: - Authentication Errors
 
-enum AuthenticationError: LocalizedError {
+nonisolated enum AuthenticationError: LocalizedError {
     case invalidCredentials
     case networkError(Error)
     case invalidResponse
@@ -43,11 +43,11 @@ enum AuthenticationError: LocalizedError {
 }
 // MARK: - Todos Models
 
-struct TodosResponse: Codable, Sendable {
+nonisolated struct TodosResponse: Codable, Sendable {
     let todo_list: [TodoItem]
 }
 
-struct TodoItem: Codable, Sendable, Identifiable {
+nonisolated struct TodoItem: Codable, Sendable, Identifiable {
     let id: Int
     let title: String
     let type: TodoType
@@ -98,7 +98,7 @@ struct TodoItem: Codable, Sendable, Identifiable {
     }
 }
 
-enum TodoType: String, Codable, Sendable {
+nonisolated enum TodoType: String, Codable, Sendable {
     case homework
     case exam
     case questionnaire
@@ -112,7 +112,7 @@ enum TodoType: String, Codable, Sendable {
     }
 }
 
-struct Prerequisite: Codable, Sendable {
+nonisolated struct Prerequisite: Codable, Sendable {
     let activity_id: Int
     let activity_type: String
     let key: String
@@ -120,16 +120,84 @@ struct Prerequisite: Codable, Sendable {
     let completion_criterion: CompletionCriterion
 }
 
-struct CompletionCriterion: Codable, Sendable {
+nonisolated struct CompletionCriterion: Codable, Sendable {
     let criterion_key: String
     let criterion_text: String
     let has_completed: Bool
     let completion_info: String
 }
 
+// MARK: - Course Outline Models
+
+nonisolated struct TronClassMyCoursesRequest: Encodable, Sendable {
+    let fields = "id,name,course_code"
+    let page = 1
+    let page_size = 100
+    let conditions = Conditions()
+    let showScorePassedStatus = false
+
+    struct Conditions: Encodable, Sendable {
+        let status = ["ongoing"]
+        let keyword = ""
+        let classify_type = "recently_started"
+        let display_studio_list = false
+    }
+}
+
+nonisolated struct TronClassMyCoursesResponse: Decodable, Sendable {
+    let courses: [TronClassCourseSummary]
+}
+
+nonisolated struct TronClassCourseSummary: Decodable, Sendable, Identifiable {
+    let id: Int
+    let name: String
+    let course_code: String
+}
+
+nonisolated struct TronClassCourseOutlineResponse: Decodable, Sendable {
+    let id: Int
+    let external_url: String?
+    let status: String?
+}
+
+nonisolated struct OutlineAPIResponse<Result: Decodable>: Decodable {
+    let statusCode: Int
+    let result: Result
+}
+
+nonisolated struct OutlineCourseInfoAndBook: Decodable, Sendable {
+    let jonCouSn: Int
+    let cm: String?
+    let book: String?
+    let refBook: String?
+    let norms: String?
+    let other: String?
+    let contact: String?
+    let office: String?
+    let courseOfficeHr: String?
+    let dptObj: String?
+}
+
+nonisolated struct OutlineCourseCP: Decodable, Sendable {
+    let jonCouSn: Int
+    let couHr: Double?
+    let atLeastWeekCnt: Int?
+    let weeklyCP: [OutlineWeeklyCP]
+}
+
+nonisolated struct OutlineWeeklyCP: Decodable, Sendable {
+    let cweek: Int
+    let unit: String?
+    let theme: String?
+    let other: String?
+    let physicalClassHr: Double?
+    let asyncOnlineClassHr: Double?
+    let syncOnlineClassHr: Double?
+}
+
 // MARK: - TronClass API Errors
 
-enum TronClassAPIError: LocalizedError {
+nonisolated enum TronClassAPIError: LocalizedError {
     case sessionExpired
     case unauthorized
     case invalidResponse

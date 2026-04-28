@@ -4,12 +4,24 @@ import Foundation
 struct CertificateCache {
     static let shared = CertificateCache()
 
-    private let cacheDirectory: URL = {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let dir = docs.appendingPathComponent("CertificateCache", isDirectory: true)
+    private var cacheDirectory: URL {
+        let appSupport = try? FileManager.default.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        let base = appSupport ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let dir = base.appendingPathComponent("CertificateCache", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try? (dir as NSURL).setResourceValue(true, forKey: .isExcludedFromBackupKey)
         return dir
-    }()
+    }
+
+    private var legacyCacheDirectory: URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("CertificateCache", isDirectory: true)
+    }
 
     private init() {}
 
@@ -23,17 +35,21 @@ struct CertificateCache {
     // MARK: - Read / Write
 
     func save(_ data: Data, hy: Int, ht: Int, version: Int) throws {
+        migrateLegacyCacheIfNeeded()
         let url = fileURL(hy: hy, ht: ht, version: version)
         try data.write(to: url, options: .atomic)
+        try? (url as NSURL).setResourceValue(true, forKey: .isExcludedFromBackupKey)
     }
 
     func load(hy: Int, ht: Int, version: Int) -> Data? {
+        migrateLegacyCacheIfNeeded()
         let url = fileURL(hy: hy, ht: ht, version: version)
         return try? Data(contentsOf: url)
     }
 
     func exists(hy: Int, ht: Int, version: Int) -> Bool {
-        FileManager.default.fileExists(atPath: fileURL(hy: hy, ht: ht, version: version).path)
+        migrateLegacyCacheIfNeeded()
+        return FileManager.default.fileExists(atPath: fileURL(hy: hy, ht: ht, version: version).path)
     }
 
     func delete(hy: Int, ht: Int, version: Int) throws {
@@ -43,10 +59,25 @@ struct CertificateCache {
         }
     }
 
+    func removeAll() {
+        migrateLegacyCacheIfNeeded()
+        try? FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
+        guard let contents = try? FileManager.default.contentsOfDirectory(
+            at: cacheDirectory,
+            includingPropertiesForKeys: nil,
+            options: .skipsHiddenFiles
+        ) else { return }
+
+        for url in contents {
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
+
     // MARK: - List All Cached Items
 
     /// Returns metadata for every cached certificate, sorted newest first.
     func allCached() -> [CachedCertificate] {
+        migrateLegacyCacheIfNeeded()
         guard let contents = try? FileManager.default.contentsOfDirectory(
             at: cacheDirectory,
             includingPropertiesForKeys: [.creationDateKey],
@@ -70,6 +101,26 @@ struct CertificateCache {
 
     func fileURL(hy: Int, ht: Int, version: Int) -> URL {
         cacheDirectory.appendingPathComponent("\(cacheKey(hy: hy, ht: ht, version: version)).pdf")
+    }
+
+    private func migrateLegacyCacheIfNeeded() {
+        let legacyDir = legacyCacheDirectory
+        guard legacyDir.path != cacheDirectory.path,
+              FileManager.default.fileExists(atPath: legacyDir.path),
+              let contents = try? FileManager.default.contentsOfDirectory(
+                at: legacyDir,
+                includingPropertiesForKeys: nil,
+                options: .skipsHiddenFiles
+              )
+        else { return }
+
+        for legacyURL in contents where legacyURL.pathExtension == "pdf" {
+            let destination = cacheDirectory.appendingPathComponent(legacyURL.lastPathComponent)
+            if !FileManager.default.fileExists(atPath: destination.path) {
+                try? FileManager.default.moveItem(at: legacyURL, to: destination)
+                try? (destination as NSURL).setResourceValue(true, forKey: .isExcludedFromBackupKey)
+            }
+        }
     }
 
     private func parseCacheFilename(_ name: String) -> (hy: Int, ht: Int, version: Int)? {

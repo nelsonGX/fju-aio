@@ -2,7 +2,7 @@ import Foundation
 import os.log
 
 actor SISService {
-    static let shared = SISService()
+    nonisolated static let shared = SISService()
     
     private let baseURL = "https://travellerlink.fju.edu.tw"
     private let authService = SISAuthService.shared
@@ -64,50 +64,54 @@ actor SISService {
     }
     
     // MARK: - Scores
+
+    func getAvailableGradeSemesters() async throws -> [String] {
+        logger.info("📅 Fetching available grade semesters...")
+        let response = try await fetchGradesInquiry()
+
+        let semesters = Set(response.result.map { "\($0.hy)-\($0.htPeriod)" })
+        return semesters.sorted { lhs, rhs in
+            let leftParts = lhs.split(separator: "-").compactMap { Int($0) }
+            let rightParts = rhs.split(separator: "-").compactMap { Int($0) }
+
+            guard leftParts.count == 2, rightParts.count == 2 else {
+                return lhs > rhs
+            }
+
+            if leftParts[0] != rightParts[0] {
+                return leftParts[0] > rightParts[0]
+            }
+            return leftParts[1] > rightParts[1]
+        }
+    }
     
     func queryScores(academicYear: String, semester: Int) async throws -> ScoreQueryResponse {
         logger.info("📊 Querying scores for \(academicYear, privacy: .public)-\(semester, privacy: .public)...")
-        let session = try await authService.getValidSession()
-        
-        var components = URLComponents(string: "\(baseURL)/Score/api/GradesInquiry/Grades")!
-        components.queryItems = [
-            URLQueryItem(name: "SortBy", value: ""),
-            URLQueryItem(name: "Descending", value: "true"),
-            URLQueryItem(name: "LcId", value: "1028")
-        ]
-        
-        guard let url = components.url else {
-            throw SISError.invalidResponse
-        }
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue("zh-TW", forHTTPHeaderField: "Accept-Language")
-        request.setValue("Bearer \(session.token)", forHTTPHeaderField: "Authorization")
-        
-        let (data, httpResponse) = try await networkService.performRequest(request)
-        try handleHTTPError(httpResponse)
-        
-        let response = try JSONDecoder().decode(GradesInquiryResponse.self, from: data)
+        let response = try await fetchGradesInquiry()
         
         let filteredCourses = response.result.filter { 
             $0.hy == Int(academicYear) && $0.htPeriod == semester 
         }
         
-        let courses = filteredCourses.map { grade in
+        let courses = filteredCourses.enumerated().map { index, grade in
             ScoreCourse(
-                courseId: "\(grade.avaCouSn ?? 0)",
+                courseId: "\(grade.courseIdentifier)-\(index)",
                 courseName: grade.couCNa,
                 credits: grade.credit,
                 score: parseScore(grade.scoreDisplay),
                 grade: grade.scoreDisplay,
-                gpa: 0.0,
+                gpa: gradePoint(for: parseScore(grade.scoreDisplay)),
                 instructor: ""
             )
         }
         
         let totalCredits = courses.reduce(0) { $0 + $1.credits }
+        let earnedCredits = courses.reduce(0) { sum, course in
+            guard let score = course.score, score >= 60 else {
+                return sum
+            }
+            return sum + course.credits
+        }
         let semesterGPA = calculateGPA(courses)
         
         return ScoreQueryResponse(
@@ -115,28 +119,58 @@ actor SISService {
             semester: "\(semester)",
             courses: courses,
             semesterGPA: semesterGPA,
-            totalCredits: totalCredits
+            totalCredits: totalCredits,
+            earnedCredits: earnedCredits
         )
     }
-    
-    private func parseScore(_ scoreDisplay: String) -> Double {
-        if let score = Double(scoreDisplay) {
-            return score
+
+    private func fetchGradesInquiry() async throws -> GradesInquiryResponse {
+        let session = try await authService.getValidSession()
+
+        var components = URLComponents(string: "\(baseURL)/Score/api/GradesInquiry/Grades")!
+        components.queryItems = [
+            URLQueryItem(name: "SortBy", value: ""),
+            URLQueryItem(name: "Descending", value: "true"),
+            URLQueryItem(name: "LcId", value: "1028")
+        ]
+
+        guard let url = components.url else {
+            throw SISError.invalidResponse
         }
-        return 0.0
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
+        request.setValue("zh-TW", forHTTPHeaderField: "Accept-Language")
+        request.setValue("https://sis.fju.edu.tw/", forHTTPHeaderField: "Referer")
+        request.setValue("Bearer \(session.token)", forHTTPHeaderField: "Authorization")
+
+        let (data, httpResponse) = try await networkService.performRequest(request)
+        try handleHTTPError(httpResponse)
+
+        return try JSONDecoder().decode(GradesInquiryResponse.self, from: data)
     }
-    
+
+    private func parseScore(_ scoreDisplay: String) -> Double? {
+        Double(scoreDisplay.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
     private func calculateGPA(_ courses: [ScoreCourse]) -> Double {
-        let validCourses = courses.filter { $0.score > 0 }
+        let validCourses = courses.filter { ($0.score ?? 0) > 0 && $0.credits > 0 }
         guard !validCourses.isEmpty else { return 0.0 }
         
         let totalPoints = validCourses.reduce(0.0) { sum, course in
-            let gradePoint = convertScoreToGradePoint(course.score)
+            let gradePoint = gradePoint(for: course.score)
             return sum + (gradePoint * Double(course.credits))
         }
         let totalCredits = validCourses.reduce(0) { $0 + $1.credits }
         
         return totalCredits > 0 ? totalPoints / Double(totalCredits) : 0.0
+    }
+
+    private func gradePoint(for score: Double?) -> Double {
+        guard let score else { return 0.0 }
+        return convertScoreToGradePoint(score)
     }
     
     private func convertScoreToGradePoint(_ score: Double) -> Double {
@@ -219,7 +253,7 @@ actor SISService {
     
     func getCourseSchedule(academicYear: String, semester: Int) async throws -> CourseScheduleResponse {
         logger.info("📅 Fetching course schedule for \(academicYear, privacy: .public)-\(semester, privacy: .public)...")
-        let session = try await authService.getValidSession()
+        _ = try await authService.getValidSession()
         
         // Note: The docs don't show a course schedule endpoint
         // This might need to be obtained from a different source or endpoint

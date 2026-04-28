@@ -1,7 +1,7 @@
 import Foundation
 
 final class NetworkService: Sendable {
-    nonisolated(unsafe) static let shared = NetworkService()
+    nonisolated static let shared = NetworkService()
     private let logger = NetworkLogger.shared
     
     private init() {}
@@ -25,7 +25,7 @@ final class NetworkService: Sendable {
     }
 }
 
-enum NetworkError: LocalizedError {
+nonisolated enum NetworkError: LocalizedError {
     case invalidResponse
     case connectionFailed(Error)
     case httpError(Int)

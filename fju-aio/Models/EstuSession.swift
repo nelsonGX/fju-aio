@@ -1,6 +1,6 @@
 import Foundation
 
-struct EstuSession: Codable, Sendable {
+nonisolated struct EstuSession: Codable, Sendable {
     let sessionId: String // ASP.NET_SessionId
     let viewState: String
     let viewStateGenerator: String
@@ -19,13 +19,13 @@ struct EstuSession: Codable, Sendable {
     }
 }
 
-struct EstuViewState: Sendable {
+nonisolated struct EstuViewState: Sendable {
     let viewState: String
     let viewStateGenerator: String
     let eventValidation: String
 }
 
-enum EstuError: LocalizedError {
+nonisolated enum EstuError: LocalizedError {
     case invalidCredentials
     case sessionExpired
     case viewStateNotFound

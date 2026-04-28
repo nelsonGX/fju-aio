@@ -3,10 +3,14 @@ import SwiftUI
 struct HomeView: View {
     @Environment(\.fjuService) private var service
     @Environment(HomePreferences.self) private var preferences
+    @Environment(SyncStatusManager.self) private var syncStatus
     @State private var todayCourses: [Course] = []
     @State private var isLoading = true
     @State private var isEditing = false
     @State private var selectedCourse: Course?
+    @State private var lastNotificationSyncSignature: String?
+    @State private var mapHighlightLocation: String? = nil
+    @State private var navigateToCampusMap = false
 
     private let cache = AppCache.shared
 
@@ -37,8 +41,17 @@ struct HomeView: View {
             HomeEditView()
         }
         .sheet(item: $selectedCourse) { course in
-            CourseDetailSheet(course: course)
-                .presentationDetents([.medium])
+            CourseDetailSheet(course: course, onOpenMap: {
+                mapHighlightLocation = course.location
+                selectedCourse = nil
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    navigateToCampusMap = true
+                }
+            })
+            .presentationDetents([.medium])
+        }
+        .navigationDestination(isPresented: $navigateToCampusMap) {
+            CampusMapView(highlightLocation: mapHighlightLocation)
         }
         .task {
             await loadTodayCourses(forceRefresh: false)
@@ -159,30 +172,86 @@ struct HomeView: View {
             if let cachedSemesters = cache.getSemesters(),
                let currentSemester = cachedSemesters.first,
                let cachedCourses = cache.getCourses(semester: currentSemester) {
+                let cachedCalendarEvents = cache.getCalendarEvents(semester: currentSemester) ?? []
                 todayCourses = cachedCourses
                     .filter { $0.dayOfWeek == todayKey }
                     .sorted { $0.startPeriod < $1.startPeriod }
                 isLoading = false
+                scheduleCourseNotifications(for: cachedCourses, calendarEvents: cachedCalendarEvents)
                 return
             }
         }
 
         isLoading = true
         do {
-            let semesters = try await service.fetchAvailableSemesters()
-            let currentSemester = semesters.first ?? "114-2"
-            let all = try await service.fetchCourses(semester: currentSemester)
+            try await syncStatus.withSync("正在載入課程…") {
+                let semesters = try await service.fetchAvailableSemesters()
+                let currentSemester = semesters.first ?? "114-2"
+                let all = try await service.fetchCourses(semester: currentSemester)
+                let calendarEvents = (try? await service.fetchCalendarEvents(semester: currentSemester)) ?? []
 
-            cache.setSemesters(semesters)
-            cache.setCourses(all, semester: currentSemester)
+                cache.setSemesters(semesters)
+                cache.setCourses(all, semester: currentSemester)
+                cache.setCalendarEvents(calendarEvents, semester: currentSemester)
 
-            let todayKey = todayDayString()
-            todayCourses = all.filter { $0.dayOfWeek == todayKey }
-                .sorted { $0.startPeriod < $1.startPeriod }
-            isLoading = false
-        } catch {
-            isLoading = false
+                let todayKey = todayDayString()
+                todayCourses = all.filter { $0.dayOfWeek == todayKey }
+                    .sorted { $0.startPeriod < $1.startPeriod }
+                scheduleCourseNotifications(for: all, calendarEvents: calendarEvents)
+            }
+        } catch {}
+        isLoading = false
+    }
+
+    private func scheduleCourseNotifications(for courses: [Course], calendarEvents: [CalendarEvent]) {
+        let snapshot = courses
+        let semester = courses.first { !$0.semester.isEmpty }?.semester ?? ""
+        let window = SemesterCalendarResolver.notificationWindow(
+            for: semester,
+            events: calendarEvents
+        )
+        let signature = notificationSyncSignature(
+            courses: snapshot,
+            semester: semester,
+            window: window
+        )
+        guard signature != lastNotificationSyncSignature else { return }
+        lastNotificationSyncSignature = signature
+
+        print("[CourseNotification] calendar window semester=\(window.semester), start=\(String(describing: window.startDate)), end=\(String(describing: window.endDate)), source=\(window.source)")
+        Task(priority: .background) {
+            await CourseNotificationManager.shared.scheduleAll(
+                for: snapshot,
+                semesterStartDate: window.startDate,
+                semesterEndDate: window.endDate
+            )
         }
+    }
+
+    private func notificationSyncSignature(
+        courses: [Course],
+        semester: String,
+        window: SemesterNotificationWindow
+    ) -> String {
+        let courseSignature = courses
+            .sorted { $0.id < $1.id }
+            .map {
+                [
+                    $0.id,
+                    $0.dayOfWeek,
+                    String($0.startPeriod),
+                    String($0.endPeriod),
+                    $0.location,
+                    $0.weeks
+                ].joined(separator: ":")
+            }
+            .joined(separator: "|")
+        return [
+            semester,
+            String(window.startDate?.timeIntervalSince1970 ?? 0),
+            String(window.endDate?.timeIntervalSince1970 ?? 0),
+            courseSignature
+        ].joined(separator: "#")
     }
 
     private func todayDayString() -> String {

@@ -1,6 +1,6 @@
 import Foundation
 
-struct Course: Identifiable, Hashable, Sendable {
+nonisolated struct Course: Identifiable, Hashable, Sendable {
     let id: String
     let name: String
     let code: String
@@ -15,6 +15,7 @@ struct Course: Identifiable, Hashable, Sendable {
     let location: String
     let weeks: String // "全", "單", "雙"
     let notes: String?
+    let outline: CourseOutlineDetails?
     let color: String // hex color for timetable display
     
     enum CourseType: String, Sendable, Hashable {
@@ -68,6 +69,7 @@ struct Course: Identifiable, Hashable, Sendable {
         location: String,
         weeks: String = "全",
         notes: String? = nil,
+        outline: CourseOutlineDetails? = nil,
         color: String = "#007AFF"
     ) {
         self.id = id
@@ -84,6 +86,7 @@ struct Course: Identifiable, Hashable, Sendable {
         self.location = location
         self.weeks = weeks
         self.notes = notes
+        self.outline = outline
         self.color = color
     }
     
@@ -113,11 +116,57 @@ struct Course: Identifiable, Hashable, Sendable {
         self.location = location
         self.weeks = "全"
         self.notes = nil
+        self.outline = nil
         self.color = color
     }
 }
 
-enum FJUPeriod {
+nonisolated struct CourseOutlineDetails: Hashable, Sendable {
+    let objective: String?
+    let teachingMaterials: String?
+    let textbook: String?
+    let referenceBook: String?
+    let policies: String?
+    let otherNotes: String?
+    let contact: String?
+    let officeHours: String?
+    let externalURL: String?
+    let weeklyPlans: [WeeklyCoursePlan]
+
+    var hasContent: Bool {
+        [
+            objective,
+            teachingMaterials,
+            textbook,
+            referenceBook,
+            policies,
+            otherNotes,
+            contact,
+            officeHours
+        ].contains { ($0 ?? "").isEmpty == false } || !weeklyPlans.isEmpty
+    }
+}
+
+nonisolated struct WeeklyCoursePlan: Identifiable, Hashable, Sendable {
+    let week: Int
+    let unit: String?
+    let theme: String?
+    let other: String?
+    let physicalClassHours: Double
+    let asyncOnlineClassHours: Double
+    let syncOnlineClassHours: Double
+
+    var id: Int { week }
+
+    var title: String {
+        [unit, theme]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
+    }
+}
+
+nonisolated enum FJUPeriod {
     // Index 0 = period 1 (D1), index 4 = noon (DN), index 10 = period D10
     static let periodTimes: [(start: String, end: String)] = [
         ("08:10", "09:00"),  // 1  D1
@@ -157,9 +206,8 @@ enum FJUPeriod {
 
 // MARK: - Array Extension
 
-private extension Array {
+private nonisolated extension Array {
     subscript(safe index: Index) -> Element? {
         indices.contains(index) ? self[index] : nil
     }
 }
-

@@ -58,17 +58,16 @@ final class RealFJUService: FJUServiceProtocol, @unchecked Sendable {
         return GPASummary(
             semesterGPA: scoreResponse.semesterGPA,
             cumulativeGPA: scoreResponse.semesterGPA,
-            totalCreditsEarned: scoreResponse.totalCredits,
+            totalCreditsEarned: scoreResponse.earnedCredits,
             totalCreditsAttempted: scoreResponse.totalCredits,
             semester: semester
         )
     }
     
     func fetchAvailableSemesters() async throws -> [String] {
-        logger.info("📅 Fetching available semesters from ESTU")
+        logger.info("📅 Fetching available grade semesters from SIS")
         
-        // Use ESTU service to get available semesters
-        return try await estuCourseService.fetchAvailableSemesters()
+        return try await sisService.getAvailableGradeSemesters()
     }
     
     // MARK: - Quick Links
@@ -408,4 +407,3 @@ final class RealFJUService: FJUServiceProtocol, @unchecked Sendable {
     
 
 }
-

@@ -74,10 +74,18 @@ final class CourseNotificationManager {
     // MARK: - Called after course load
 
     /// Starts a Live Activity if a class is active or about to start today.
-    func scheduleAll(for courses: [Course]) async {
+    func scheduleAll(
+        for courses: [Course],
+        semesterStartDate overrideSemesterStartDate: Date? = nil,
+        semesterEndDate overrideSemesterEndDate: Date? = nil
+    ) async {
         guard isEnabled, notifyStart || notifyBefore else { return }
         lastCourseSnapshot = courses
-        await scheduleRemoteCourseActivities(for: courses)
+        await scheduleRemoteCourseActivities(
+            for: courses,
+            semesterStartDate: overrideSemesterStartDate,
+            semesterEndDate: overrideSemesterEndDate
+        )
         await startLiveActivityIfNeeded(for: courses)
     }
 
@@ -372,61 +380,87 @@ final class CourseNotificationManager {
         }
     }
 
-    private func scheduleRemoteCourseActivities(for courses: [Course]) async {
+    private func scheduleRemoteCourseActivities(
+        for courses: [Course],
+        semesterStartDate overrideSemesterStartDate: Date?,
+        semesterEndDate overrideSemesterEndDate: Date?
+    ) async {
         let now = Date()
         let identity = await notificationIdentity()
-        let schedules = Array(courses.compactMap { remoteSchedule(for: $0, from: now, identity: identity) }.prefix(20))
+        let semester = semesterIdentifier(from: courses)
+        let semesterStartDate = overrideSemesterStartDate ?? now
+        let semesterEndDate = overrideSemesterEndDate ?? estimatedSemesterEndDate(for: semester, from: now)
+        guard semesterEndDate > now else {
+            print("[CourseNotification] 學期已結束，跳過伺服器排程 semester=\(semester), until=\(semesterEndDate)")
+            await cancelRemoteSchedules(semester: semester, deactivateToken: false)
+            return
+        }
+        print("[CourseNotification] 同步課程排程 semester=\(semester), courses=\(courses.count), from=\(semesterStartDate), until=\(semesterEndDate)")
+        let schedules = Array(courses.flatMap {
+            remoteSchedules(for: $0, from: now, semesterStartDate: semesterStartDate, until: semesterEndDate, identity: identity)
+        }.prefix(1000))
 
         guard !schedules.isEmpty else {
             print("[CourseNotification] 沒有需要伺服器排程的課程 Live Activity")
             return
         }
 
-        let payload = PushToStartSchedulePayload(schedules: schedules)
-        if await postJSON(to: "\(serverBaseURL)/push-to-start/schedule", body: payload) {
-            print("[CourseNotification] ✅ 已向伺服器排程課程 Live Activities: \(schedules.count)")
+        let payload = PushToStartSemesterSyncPayload(
+            userId: identity.userId,
+            deviceId: identity.deviceId,
+            semester: semester,
+            semesterEndDate: unixSeconds(semesterEndDate),
+            schedules: schedules
+        )
+        await MainActor.run { SyncStatusManager.shared.begin("正在同步課程通知排程…") }
+        let success = await postJSON(to: "\(serverBaseURL)/push-to-start/sync-semester", body: payload)
+        await MainActor.run { SyncStatusManager.shared.end() }
+        if success {
+            print("[CourseNotification] ✅ 已向伺服器同步整學期 Live Activities: \(semester) \(schedules.count)")
         } else {
             print("[CourseNotification] ⚠️ 課程 Live Activity 伺服器排程失敗")
         }
     }
 
-    private func remoteSchedule(
+    private func remoteSchedules(
         for course: Course,
         from now: Date,
+        semesterStartDate: Date,
+        until semesterEndDate: Date,
         identity: NotificationIdentity
-    ) -> RemoteCourseActivitySchedule? {
-        guard let occurrence = nextOccurrence(for: course, from: now) else { return nil }
-
+    ) -> [RemoteCourseActivitySchedule] {
         let showBefore = notifyBefore
         let showDuring = notifyStart
-        guard showBefore || showDuring else { return nil }
+        guard showBefore || showDuring else { return [] }
 
-        let pushDate = showBefore
-            ? occurrence.startDate.addingTimeInterval(-Double(minutesBefore) * 60)
-            : occurrence.startDate
-        let initialPhase: CoursePhase = showBefore ? .before : .during
-        let endTransitionDate = showDuring ? occurrence.endDate : occurrence.startDate
-        let dismissalDate = notifyEnd && showDuring
-            ? occurrence.endDate.addingTimeInterval(liveActivityDismissalDelay)
-            : endTransitionDate
+        return courseOccurrences(for: course, from: now, semesterStartDate: semesterStartDate, until: semesterEndDate).compactMap { occurrence in
+            let pushDate = showBefore
+                ? occurrence.startDate.addingTimeInterval(-Double(minutesBefore) * 60)
+                : occurrence.startDate
+            let initialPhase: CoursePhase = showBefore ? .before : .during
+            let endTransitionDate = showDuring ? occurrence.endDate : occurrence.startDate
+            let dismissalDate = notifyEnd && showDuring
+                ? occurrence.endDate.addingTimeInterval(liveActivityDismissalDelay)
+                : endTransitionDate
 
-        guard pushDate.timeIntervalSince(now) > 5 else { return nil }
-        guard dismissalDate.timeIntervalSince(now) > 5 else { return nil }
+            guard pushDate.timeIntervalSince(now) > 5 else { return nil }
+            guard dismissalDate.timeIntervalSince(now) > 5 else { return nil }
 
-        return RemoteCourseActivitySchedule(
-            userId: identity.userId,
-            deviceId: identity.deviceId,
-            courseName: course.name,
-            courseId: course.id,
-            location: course.location,
-            instructor: course.instructor,
-            pushAt: unixSeconds(pushDate),
-            classStartDate: unixSeconds(occurrence.startDate),
-            classEndDate: unixSeconds(occurrence.endDate),
-            initialPhase: initialPhase,
-            endAt: unixSeconds(endTransitionDate),
-            dismissalDate: unixSeconds(dismissalDate)
-        )
+            return RemoteCourseActivitySchedule(
+                userId: identity.userId,
+                deviceId: identity.deviceId,
+                courseName: course.name,
+                courseId: course.id,
+                location: course.location,
+                instructor: course.instructor,
+                pushAt: unixSeconds(pushDate),
+                classStartDate: unixSeconds(occurrence.startDate),
+                classEndDate: unixSeconds(occurrence.endDate),
+                initialPhase: initialPhase,
+                endAt: unixSeconds(endTransitionDate),
+                dismissalDate: unixSeconds(dismissalDate)
+            )
+        }
     }
 
     private func nextOccurrence(for course: Course, from now: Date) -> (startDate: Date, endDate: Date)? {
@@ -450,6 +484,79 @@ final class CourseNotificationManager {
         }
 
         return nil
+    }
+
+    private func courseOccurrences(
+        for course: Course,
+        from now: Date,
+        semesterStartDate: Date,
+        until semesterEndDate: Date
+    ) -> [(startDate: Date, endDate: Date)] {
+        let calendar = Calendar.current
+        var occurrences: [(startDate: Date, endDate: Date)] = []
+        var date = calendar.startOfDay(for: max(now, semesterStartDate))
+        let finalDate = calendar.startOfDay(for: semesterEndDate)
+
+        while date < finalDate {
+            let weekday = calendar.component(.weekday, from: date)
+            if course.dayOfWeekNumber == weekdayToCourseDay(weekday),
+               shouldInclude(course: course, on: date, calendar: calendar),
+               let startDate = courseDate(for: course, on: date, calendar: calendar, useEndTime: false),
+               let endDate = courseDate(for: course, on: date, calendar: calendar, useEndTime: true),
+               endDate > startDate,
+               startDate < semesterEndDate {
+                occurrences.append((startDate, endDate))
+            }
+
+            guard let nextDate = calendar.date(byAdding: .day, value: 1, to: date) else { break }
+            date = nextDate
+        }
+
+        return occurrences
+    }
+
+    private func shouldInclude(course: Course, on date: Date, calendar: Calendar) -> Bool {
+        switch course.weeks {
+        case "單":
+            return calendar.component(.weekOfYear, from: date).isMultiple(of: 2) == false
+        case "雙":
+            return calendar.component(.weekOfYear, from: date).isMultiple(of: 2)
+        default:
+            return true
+        }
+    }
+
+    private func semesterIdentifier(from courses: [Course]) -> String {
+        courses.first { !$0.semester.isEmpty }?.semester ?? "unknown"
+    }
+
+    private func estimatedSemesterEndDate(for semester: String, from now: Date) -> Date {
+        let calendar = Calendar.current
+        let parts = semester.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 2 else {
+            return calendar.date(byAdding: .day, value: 120, to: now) ?? now.addingTimeInterval(120 * 24 * 60 * 60)
+        }
+
+        let gregorianStartYear = parts[0] + 1911
+        var comps = DateComponents()
+        comps.calendar = calendar
+        comps.timeZone = calendar.timeZone
+        comps.hour = 23
+        comps.minute = 59
+        comps.second = 59
+
+        if parts[1] == 1 {
+            comps.year = gregorianStartYear + 1
+            comps.month = 1
+            comps.day = 31
+        } else {
+            comps.year = gregorianStartYear + 1
+            comps.month = 7
+            comps.day = 31
+        }
+
+        let estimated = calendar.date(from: comps) ?? now
+        return estimated
     }
 
     private func courseDate(for course: Course, on referenceDate: Date, calendar: Calendar, useEndTime: Bool) -> Date? {
@@ -504,6 +611,14 @@ final class CourseNotificationManager {
         let schedules: [RemoteCourseActivitySchedule]
     }
 
+    private struct PushToStartSemesterSyncPayload: Encodable {
+        let userId: String
+        let deviceId: String
+        let semester: String
+        let semesterEndDate: Int
+        let schedules: [RemoteCourseActivitySchedule]
+    }
+
     private struct RemoteCourseActivitySchedule: Encodable {
         let userId: String
         let deviceId: String
@@ -522,6 +637,7 @@ final class CourseNotificationManager {
     private struct CancelRemoteSchedulesPayload: Encodable {
         let userId: String
         let deviceId: String
+        let semester: String?
         let deactivateToken: Bool
     }
 
@@ -548,7 +664,11 @@ final class CourseNotificationManager {
                 if await postJSON(to: "\(serverBaseURL)/push-to-start/register", body: payload) {
                     print("[CourseNotification] ✅ 已向伺服器註冊 push-to-start token")
                     if !lastCourseSnapshot.isEmpty {
-                        await scheduleRemoteCourseActivities(for: lastCourseSnapshot)
+                        await scheduleRemoteCourseActivities(
+                            for: lastCourseSnapshot,
+                            semesterStartDate: nil,
+                            semesterEndDate: nil
+                        )
                     }
                 } else {
                     print("[CourseNotification] ⚠️ push-to-start token 註冊失敗")
@@ -807,15 +927,20 @@ final class CourseNotificationManager {
         return generated
     }
 
-    private func cancelRemoteSchedules(deactivateToken: Bool) async {
+    private func cancelRemoteSchedules(semester: String? = nil, deactivateToken: Bool) async {
         let identity = await notificationIdentity()
         let payload = CancelRemoteSchedulesPayload(
             userId: identity.userId,
             deviceId: identity.deviceId,
+            semester: semester,
             deactivateToken: deactivateToken
         )
         if await postJSON(to: "\(serverBaseURL)/push-to-start/cancel", body: payload) {
-            print("[CourseNotification] ✅ 已取消伺服器未來 Live Activity 排程")
+            if let semester {
+                print("[CourseNotification] ✅ 已取消伺服器 \(semester) 未來 Live Activity 排程")
+            } else {
+                print("[CourseNotification] ✅ 已取消伺服器未來 Live Activity 排程")
+            }
         } else {
             print("[CourseNotification] ⚠️ 取消伺服器 Live Activity 排程失敗")
         }

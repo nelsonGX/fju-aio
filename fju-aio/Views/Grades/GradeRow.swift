@@ -27,7 +27,7 @@ struct GradeRow: View {
                     }
                 }
             } else {
-                Text("尚未公布")
+                Text(grade.letterGrade ?? "尚未公布")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 8)

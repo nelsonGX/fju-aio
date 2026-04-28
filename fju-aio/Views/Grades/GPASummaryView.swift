@@ -12,7 +12,7 @@ struct GPASummaryView: View {
             }
 
             HStack {
-                creditItem(label: "已修學分", value: summary.totalCreditsEarned)
+                creditItem(label: "已得學分", value: summary.totalCreditsEarned)
                 Spacer()
                 creditItem(label: "應修學分", value: summary.totalCreditsAttempted)
             }

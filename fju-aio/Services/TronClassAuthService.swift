@@ -2,7 +2,7 @@ import Foundation
 import os.log
 
 actor TronClassAuthService {
-    static let shared = TronClassAuthService()
+    nonisolated static let shared = TronClassAuthService()
     
     private let baseURL = "https://elearn2.fju.edu.tw"
     private let credentialStore = CredentialStore.shared
@@ -263,9 +263,8 @@ actor TronClassAuthService {
 
 // MARK: - Array Safe Subscript
 
-private extension Array {
+private nonisolated extension Array {
     subscript(safe index: Index) -> Element? {
         indices.contains(index) ? self[index] : nil
     }
 }
-

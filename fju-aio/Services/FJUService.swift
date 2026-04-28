@@ -178,6 +178,7 @@ final class FJUService: FJUServiceProtocol, @unchecked Sendable {
             location: "\(course.location) [mock]",
             weeks: course.weeks,
             notes: course.notes.map { "\($0) [mock]" },
+            outline: course.outline,
             color: course.color
         )
     }

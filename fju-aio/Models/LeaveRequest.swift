@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - App-level leave model (used by UI)
 
-struct LeaveRequest: Identifiable, Sendable {
+nonisolated struct LeaveRequest: Identifiable, Sendable {
     let id: String              // leaveApplySn as string
     let leaveApplySn: Int
     let applyNo: String
@@ -42,6 +42,31 @@ struct LeaveKind: Identifiable, Codable, Sendable, Hashable {
     let label: String
     let lcId: Int
 
+nonisolated struct CourseSectionListResponse: Codable, Sendable {
+    let statusCode: Int
+    let result: [CourseSectionRaw]
+    let message: AnyCodable?
+    let errorMessage: AnyCodable?
+}
+
+nonisolated struct CourseSectionRaw: Codable, Sendable {
+    let sectNo: Int
+    let sectionCna: String          // e.g. "D5"
+    let sectionStartTime: String?   // e.g. "13:40"
+    let sectionEndTime: String?     // e.g. "14:30"
+
+    var resolvedSectNo: Int { sectNo }
+    var resolvedSectNa: String { sectionCna }
+    var resolvedBeginTime: String { sectionStartTime ?? "" }
+    var resolvedEndTime: String { sectionEndTime ?? "" }
+}
+
+// MARK: - Family type/level from RefList/FamType, RefList/FamLevel
+// Using flexible decoding to handle various possible field name shapes
+
+nonisolated struct FamTypeItem: Identifiable, Codable, Sendable, Hashable {
+    let value: Int
+    let label: String
     var id: Int { value }
     var leaveNa: String { label }
 }
@@ -82,7 +107,7 @@ struct LeaveDocMapping: Identifiable, Codable, Sendable, Hashable {
 
 // MARK: - Leave stat from StuLeave/Stat
 
-struct LeaveStat: Sendable {
+nonisolated struct LeaveStat: Sendable {
     let leaveName: String
     let totalSections: Int
     let totalDays: Int
@@ -90,7 +115,7 @@ struct LeaveStat: Sendable {
 
 // MARK: - API response wrappers
 
-struct LeaveKindListResponse: Codable, Sendable {
+nonisolated struct LeaveKindListResponse: Codable, Sendable {
     let statusCode: Int
     let result: [LeaveKind]
     let message: AnyCodable?
@@ -199,7 +224,7 @@ struct LeaveApplyAPIResponse: Codable, Sendable {
     nonisolated var errorMessages: [LeaveErrorField]? { errorMessage }
 }
 
-struct LeaveSelCouResponse: Codable, Sendable {
+nonisolated struct LeaveSelCouResponse: Codable, Sendable {
     let statusCode: Int
     let result: Bool
     let message: LeaveSelCouMessage?
@@ -323,7 +348,7 @@ struct LeaveStatLeaveSeqTim: Codable, Sendable, Hashable {
     let sectNo: Int?
 }
 
-struct LeaveApplyDeadlineResponse: Codable, Sendable {
+nonisolated struct LeaveApplyDeadlineResponse: Codable, Sendable {
     let statusCode: Int
     let result: String?         // deadline date string
     let message: AnyCodable?
@@ -331,7 +356,7 @@ struct LeaveApplyDeadlineResponse: Codable, Sendable {
 }
 
 // API shape: {"statusCode":200,"result":[114,113],...}
-struct HyListResponse: Codable, Sendable {
+nonisolated struct HyListResponse: Codable, Sendable {
     let statusCode: Int
     let result: [Int]
     let message: AnyCodable?
@@ -340,7 +365,7 @@ struct HyListResponse: Codable, Sendable {
     nonisolated var records: [HyRecord] { result.map { HyRecord(hy: $0) } }
 }
 
-struct HyRecord: Sendable, Identifiable, Hashable {
+nonisolated struct HyRecord: Sendable, Identifiable, Hashable {
     let hy: Int
 
     var id: Int { hy }

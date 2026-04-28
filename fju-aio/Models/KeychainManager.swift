@@ -2,11 +2,11 @@ import Foundation
 import Security
 
 final class KeychainManager: Sendable {
-    static let shared = KeychainManager()
+    nonisolated static let shared = KeychainManager()
     
     private init() {}
     
-    enum KeychainError: LocalizedError {
+    nonisolated enum KeychainError: LocalizedError {
         case itemNotFound
         case duplicateItem
         case invalidData

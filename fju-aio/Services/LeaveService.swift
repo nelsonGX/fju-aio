@@ -5,7 +5,7 @@ import os.log
 /// Base URL: https://exploreLink.fju.edu.tw/stuLeave/api
 /// Auth: Bearer token from SISAuthService (same JWT used by SISService).
 actor LeaveService {
-    static let shared = LeaveService()
+    nonisolated static let shared = LeaveService()
 
     private let baseURL = "https://exploreLink.fju.edu.tw/stuLeave/api"
     private let authService = SISAuthService.shared
@@ -22,7 +22,19 @@ actor LeaveService {
         let request = try await makeRequest("GET", path: "/RefList/LeaveKind")
         let (data, response) = try await networkService.performRequest(request)
         try handleHTTPError(response)
-        let decoded = try JSONDecoder().decode(LeaveKindListResponse.self, from: data)
+        logRawJSON(data, label: "RefList/LeaveKind")
+        let decoded = try decodeLogged(LeaveKindListResponse.self, from: data, label: "LeaveKindListResponse")
+        return decoded.result
+    }
+
+    /// GET /RefList/RefLeave — leave subtypes for 一般請假
+    func fetchRefLeave() async throws -> [LeaveKind] {
+        logger.info("📋 Fetching ref leave subtypes")
+        let request = try await makeRequest("GET", path: "/RefList/RefLeave")
+        let (data, response) = try await networkService.performRequest(request)
+        try handleHTTPError(response)
+        logRawJSON(data, label: "RefList/RefLeave")
+        let decoded = try decodeLogged(LeaveKindListResponse.self, from: data, label: "LeaveKindListResponse")
         return decoded.result
     }
 
@@ -62,7 +74,8 @@ actor LeaveService {
         let request = try await makeRequest("GET", path: "/RefList/Hy")
         let (data, response) = try await networkService.performRequest(request)
         try handleHTTPError(response)
-        let decoded = try JSONDecoder().decode(HyListResponse.self, from: data)
+        logRawJSON(data, label: "RefList/Hy")
+        let decoded = try decodeLogged(HyListResponse.self, from: data, label: "HyListResponse")
         return decoded.records
     }
 
@@ -72,8 +85,189 @@ actor LeaveService {
         let request = try await makeRequest("GET", path: "/SystemTime/ApplyDeadline")
         let (data, response) = try await networkService.performRequest(request)
         try handleHTTPError(response)
-        let decoded = try JSONDecoder().decode(LeaveApplyDeadlineResponse.self, from: data)
+        logRawJSON(data, label: "SystemTime/ApplyDeadline")
+        let decoded = try decodeLogged(LeaveApplyDeadlineResponse.self, from: data, label: "LeaveApplyDeadlineResponse")
         return decoded.result
+    }
+
+    /// GET /Course/Section — period time mappings (D0–D8, DN)
+    func fetchCourseSections() async throws -> [CourseSection] {
+        logger.info("📋 Fetching course sections")
+        let request = try await makeRequest("GET", path: "/Course/Section")
+        let (data, response) = try await networkService.performRequest(request)
+        try handleHTTPError(response)
+        logRawJSON(data, label: "Course/Section")
+        let decoded = try decodeLogged(CourseSectionListResponse.self, from: data, label: "CourseSectionListResponse")
+        let sections = decoded.result.compactMap { raw -> CourseSection? in
+            let no = raw.resolvedSectNo
+            let na = raw.resolvedSectNa
+            guard no > 0 || !na.isEmpty else { return nil }
+            return CourseSection(
+                sectNo: no,
+                sectNa: na,
+                beginTime: raw.resolvedBeginTime,
+                endTime: raw.resolvedEndTime
+            )
+        }
+        logger.debug("📋 Course/Section decoded \(sections.count) entries: \(sections.map { "\($0.sectNo)=\($0.sectNa)" }.joined(separator: ", "))")
+        return sections
+    }
+
+    /// GET /RefList/FamType — family relationship types (for 喪假)
+    func fetchFamTypes() async throws -> [FamTypeItem] {
+        logger.info("📋 Fetching family types")
+        let request = try await makeRequest("GET", path: "/RefList/FamType")
+        let (data, response) = try await networkService.performRequest(request)
+        try handleHTTPError(response)
+        logRawJSON(data, label: "RefList/FamType")
+        let decoded = try decodeLogged(FamTypeListResponse.self, from: data, label: "FamTypeListResponse")
+        return decoded.result
+    }
+
+    /// GET /RefList/FamLevel — family relationship levels (for 喪假)
+    func fetchFamLevels() async throws -> [FamLevelItem] {
+        logger.info("📋 Fetching family levels")
+        let request = try await makeRequest("GET", path: "/RefList/FamLevel")
+        let (data, response) = try await networkService.performRequest(request)
+        try handleHTTPError(response)
+        logRawJSON(data, label: "RefList/FamLevel")
+        let decoded = try decodeLogged(FamLevelListResponse.self, from: data, label: "FamLevelListResponse")
+        return decoded.result
+    }
+
+    /// GET /Student/Contact — pre-fill phone/email from student profile
+    func fetchStudentContact() async throws -> StudentContact? {
+        logger.info("📋 Fetching student contact")
+        let session = try await authService.getValidSession()
+        var components = URLComponents(string: "\(baseURL)/Student/Contact")!
+        components.queryItems = [URLQueryItem(name: "stuNo", value: session.empNo)]
+        guard let url = components.url else { throw SISError.invalidResponse }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("zh-TW", forHTTPHeaderField: "Accept-Language")
+        request.setValue("Bearer \(session.token)", forHTTPHeaderField: "Authorization")
+        let (data, httpResponse) = try await networkService.performRequest(request)
+        try handleHTTPError(httpResponse)
+        logRawJSON(data, label: "Student/Contact")
+        let decoded = try decodeLogged(StudentContactResponse.self, from: data, label: "StudentContactResponse")
+        return decoded.result
+    }
+
+    /// GET /StuLeave/{leaveApplySn} — fetch a single leave record
+    func fetchLeaveRecord(leaveApplySn: Int) async throws -> LeaveRecord {
+        logger.info("📋 Fetching leave record \(leaveApplySn)")
+        let request = try await makeRequest("GET", path: "/StuLeave/\(leaveApplySn)")
+        let (data, response) = try await networkService.performRequest(request)
+        try handleHTTPError(response)
+        let decoded = try JSONDecoder().decode(LeaveRecordDetailResponse.self, from: data)
+        guard let record = decoded.result else { throw SISError.notFound }
+        return record
+    }
+
+    /// GET /StuLeave/{leaveApplySn}/SelCou — fetch matched courses for the leave period
+    func fetchSelCouCourses(leaveApplySn: Int) async throws -> [LeaveSelCouCourse] {
+        logger.info("📚 Fetching SelCou for leave \(leaveApplySn)")
+        let request = try await makeRequest("GET", path: "/StuLeave/\(leaveApplySn)/SelCou")
+        let (data, response) = try await networkService.performRequest(request)
+        try handleHTTPError(response)
+        // The SelCou response may have a complex nested shape; decode as raw JSON first
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let resultArray = json["result"] as? [[String: Any]] {
+            return resultArray.compactMap { parseSelCouCourse($0) }
+        }
+        return []
+    }
+
+    /// Final submit flow:
+    ///   1. GET  /StuLeave/{sn}/LeaveAlert  — fetch any warnings (ignored, but mirrors website behaviour)
+    ///   2. PUT  /StuLeave/{sn}/Confirm     — actually submit the leave application
+    func confirmLeave(leaveApplySn: Int) async throws {
+        logger.info("📝 Confirming leave \(leaveApplySn)")
+        let session = try await authService.getValidSession()
+
+        // Step 1: fetch alert (fire-and-forget, website always does this first)
+        let alertURL = URL(string: "\(baseURL)/StuLeave/\(leaveApplySn)/LeaveAlert")!
+        var alertReq = URLRequest(url: alertURL)
+        alertReq.httpMethod = "GET"
+        alertReq.setValue("application/json", forHTTPHeaderField: "Accept")
+        alertReq.setValue("zh-TW", forHTTPHeaderField: "Accept-Language")
+        alertReq.setValue("Bearer \(session.token)", forHTTPHeaderField: "Authorization")
+        if let (data, _) = try? await networkService.performRequest(alertReq) {
+            logRawJSON(data, label: "LeaveAlert")
+        }
+
+        // Step 2: PUT .../Confirm to submit
+        let confirmURL = URL(string: "\(baseURL)/StuLeave/\(leaveApplySn)/Confirm")!
+        var confirmReq = URLRequest(url: confirmURL)
+        confirmReq.httpMethod = "PUT"
+        confirmReq.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        confirmReq.setValue("application/json", forHTTPHeaderField: "Accept")
+        confirmReq.setValue("zh-TW", forHTTPHeaderField: "Accept-Language")
+        confirmReq.setValue("Bearer \(session.token)", forHTTPHeaderField: "Authorization")
+        confirmReq.httpBody = "{}".data(using: .utf8)
+
+        let (confirmData, confirmResponse) = try await networkService.performRequest(confirmReq)
+        logRawJSON(confirmData, label: "Confirm")
+        try handleHTTPError(confirmResponse)
+        logger.info("✅ Leave \(leaveApplySn) submitted")
+    }
+
+    // MARK: - SelCou raw JSON parser
+    // Real API shape (from /StuLeave/{sn}/SelCou):
+    //   jonCouSn, avaCouSn, couCna, javaNo (course code), tchCna, avaDptCn (class name)
+    //   seqTims: [{sectNo, couWek, section}]  — all scheduled periods
+    //   leaveSeqTims: [{sectNo, couDate, couWek, jonCouSn, avaCouSn}]  — matched leave periods
+
+    private func parseSelCouCourse(_ dict: [String: Any]) -> LeaveSelCouCourse? {
+        guard
+            let jonCouSn = dict["jonCouSn"] as? Int,
+            let avaCouSn = dict["avaCouSn"] as? Int
+        else { return nil }
+
+        let couCNa   = (dict["couCna"] as? String) ?? (dict["couCNa"] as? String) ?? ""
+        let couNo    = (dict["javaNo"] as? String) ?? (dict["avaNo"] as? String) ?? (dict["couNo"] as? String) ?? ""
+        let tchCNa   = (dict["tchCna"] as? String) ?? (dict["tchCNa"] as? String)
+        let divStr   = (dict["avaDivCn"] as? String) ?? "日"
+        let dptGrdNa = (dict["avaDptCn"] as? String).map { "(\(divStr))\($0)" }
+
+        // seqTims gives all scheduled period numbers and the day-of-week
+        var sectNos: [Int] = []
+        var couWek = "1"
+        if let seqTims = dict["seqTims"] as? [[String: Any]] {
+            for tim in seqTims {
+                if let sn = tim["sectNo"] as? Int, !sectNos.contains(sn) {
+                    sectNos.append(sn)
+                }
+                if let wek = tim["couWek"] as? String { couWek = wek }
+            }
+        }
+
+        // leaveSeqTims gives exactly which date+period combos match this leave
+        var leaveDates: [LeaveSelCouDate] = []
+        if let tims = dict["leaveSeqTims"] as? [[String: Any]] {
+            for tim in tims {
+                guard
+                    let dateStr = tim["couDate"] as? String,
+                    let sn      = tim["sectNo"] as? Int
+                else { continue }
+                leaveDates.append(LeaveSelCouDate(couDate: String(dateStr.prefix(10)), sectNo: sn))
+            }
+        }
+
+        logger.debug("📚 Parsed course \(couNo) \(couCNa): sectNos=\(sectNos) leaveDates=\(leaveDates.count)")
+
+        return LeaveSelCouCourse(
+            jonCouSn: jonCouSn,
+            avaCouSn: avaCouSn,
+            couCNa: couCNa,
+            couNo: couNo,
+            tchCNa: tchCNa,
+            dptGrdNa: dptGrdNa,
+            couWek: couWek,
+            sectNos: sectNos,
+            leaveDates: leaveDates
+        )
     }
 
     // MARK: - Leave Records
@@ -167,7 +361,8 @@ actor LeaveService {
 
         let (data, httpResponse) = try await networkService.performRequest(request)
         try handleHTTPError(httpResponse)
-        let decoded = try JSONDecoder().decode(LeaveStatListResponse.self, from: data)
+        logRawJSON(data, label: "StuLeave/Stat")
+        let decoded = try decodeLogged(LeaveStatResponse.self, from: data, label: "LeaveStatResponse")
         return decoded.result
     }
 
@@ -290,7 +485,8 @@ actor LeaveService {
     // MARK: - Submit Leave (Step 2)
 
     /// POST /StuLeave/{leaveApplySn}/SelCou — attach courses to a leave application.
-    func selectCourses(_ courses: [LeaveSelCouItem], forLeave leaveApplySn: Int) async throws {
+    /// Payload is an array of per-date-per-period entries as documented.
+    func selectCourses(_ entries: [SelCouPostEntry], forLeave leaveApplySn: Int) async throws {
         logger.info("📚 Selecting courses for leave \(leaveApplySn)")
         let session = try await authService.getValidSession()
 
@@ -302,15 +498,14 @@ actor LeaveService {
         request.setValue("zh-TW", forHTTPHeaderField: "Accept-Language")
         request.setValue("Bearer \(session.token)", forHTTPHeaderField: "Authorization")
 
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        request.httpBody = try encoder.encode(courses)
+        request.httpBody = try JSONEncoder().encode(entries)
 
         let (data, httpResponse) = try await networkService.performRequest(request)
         try handleHTTPError(httpResponse)
 
-        let decoded = try JSONDecoder().decode(LeaveSelCouResponse.self, from: data)
-        guard decoded.success else {
+        // Response may be a success bool or a simple 200 with no body check needed
+        if let decoded = try? JSONDecoder().decode(LeaveSelCouResponse.self, from: data),
+           !decoded.success {
             throw SISError.serverError("課程選取失敗 (statusCode=\(decoded.statusCode))")
         }
         logger.info("✅ Courses selected for leave \(leaveApplySn)")
@@ -354,6 +549,36 @@ actor LeaveService {
         return request
     }
 
+    /// Log the first 2000 chars of raw JSON response for debugging.
+    private func logRawJSON(_ data: Data, label: String) {
+        let raw = String(data: data, encoding: .utf8) ?? "<non-UTF8>"
+        let preview = raw.count > 2000 ? String(raw.prefix(2000)) + "…" : raw
+        logger.debug("📦 [\(label)] raw JSON: \(preview)")
+    }
+
+    /// Decode and surface a detailed error message if decoding fails.
+    private func decodeLogged<T: Decodable>(_ type: T.Type, from data: Data, label: String) throws -> T {
+        do {
+            return try JSONDecoder().decode(type, from: data)
+        } catch let error as DecodingError {
+            let detail: String
+            switch error {
+            case .keyNotFound(let key, let ctx):
+                detail = "keyNotFound '\(key.stringValue)' at \(ctx.codingPath.map(\.stringValue).joined(separator: "."))"
+            case .typeMismatch(let type, let ctx):
+                detail = "typeMismatch expected \(type) at \(ctx.codingPath.map(\.stringValue).joined(separator: "."))"
+            case .valueNotFound(let type, let ctx):
+                detail = "valueNotFound \(type) at \(ctx.codingPath.map(\.stringValue).joined(separator: "."))"
+            case .dataCorrupted(let ctx):
+                detail = "dataCorrupted: \(ctx.debugDescription)"
+            @unknown default:
+                detail = error.localizedDescription
+            }
+            logger.error("❌ [\(label)] decode failed: \(detail)")
+            throw error
+        }
+    }
+
     private func handleHTTPError(_ response: HTTPURLResponse) throws {
         switch response.statusCode {
         case 200...299: return
@@ -389,30 +614,4 @@ actor LeaveService {
             .trimmingCharacters(in: CharacterSet(charactersIn: "\" "))
         return raw?.isEmpty == false ? raw : nil
     }
-}
-
-// MARK: - SelCou payload model
-
-struct LeaveSelCouItem: Codable, Sendable {
-    let jonCouSn: Int
-    let avaCouSn: Int
-    let hy: Int
-    let ht: Int
-    let scoTyp: Int
-    let period: Int
-    let tchNo: String
-    let couDates: [String]       // ISO8601 date strings
-    let seqTims: [LeaveSeqTim]
-}
-
-struct LeaveSeqTim: Codable, Sendable {
-    let section: String          // e.g. "D5"
-    let leaveSeqTimSn: Int
-    let leaveApplySn: Int
-    let jonCouSn: Int
-    let avaCouSn: Int
-    let stuNo: String?
-    let couDate: String          // ISO8601
-    let couWek: String           // day of week number as string
-    let sectNo: Int
 }

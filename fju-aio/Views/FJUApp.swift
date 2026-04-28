@@ -3,6 +3,8 @@ import SwiftUI
 @main
 struct FJUApp: App {
     @State private var authManager = AuthenticationManager()
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    private let syncStatus = SyncStatusManager.shared
 
     init() {
         _ = CourseNotificationManager.shared
@@ -11,10 +13,17 @@ struct FJUApp: App {
     var body: some Scene {
         WindowGroup {
             if authManager.isAuthenticated {
-                ContentView()
-                    .environment(\.fjuService, FJUService.shared)
-                    .environment(HomePreferences())
-                    .environment(authManager)
+                if hasCompletedOnboarding {
+                    ContentView()
+                        .environment(\.fjuService, FJUService.shared)
+                        .environment(HomePreferences())
+                        .environment(authManager)
+                        .environment(syncStatus)
+                } else {
+                    OnboardingView()
+                        .environment(authManager)
+                        .environment(syncStatus)
+                }
             } else {
                 LoginView()
                     .environment(authManager)

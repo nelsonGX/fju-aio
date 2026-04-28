@@ -150,6 +150,7 @@ struct EnrollmentCertificateView: View {
     // MARK: - Actions
 
     private func loadStuInfo() async {
+        refreshCache()
         isLoadingInfo = true
         errorMessage = nil
         do {

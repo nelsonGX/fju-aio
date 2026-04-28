@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Authentication Models
 
-struct SISSession: Codable, Sendable {
+nonisolated struct SISSession: Codable, Sendable {
     let token: String
     let userId: Int
     let userName: String
@@ -14,7 +14,7 @@ struct SISSession: Codable, Sendable {
     }
 }
 
-struct LDAPLoginRequest: Codable, Sendable {
+nonisolated struct LDAPLoginRequest: Codable, Sendable {
     let empNo: String
     let password: String
     let systemSn: Int
@@ -26,7 +26,7 @@ struct LDAPLoginRequest: Codable, Sendable {
     }
 }
 
-struct LDAPLoginResponse: Codable, Sendable {
+nonisolated struct LDAPLoginResponse: Codable, Sendable {
     let statusCode: Int
     let result: LoginResult?
     let message: [String: String]?
@@ -48,18 +48,18 @@ struct LDAPLoginResponse: Codable, Sendable {
     }
 }
 
-struct APILoginRequest: Codable, Sendable {
+nonisolated struct APILoginRequest: Codable, Sendable {
     let tokenKey: String
 }
 
-struct APILoginResponse: Codable, Sendable {
+nonisolated struct APILoginResponse: Codable, Sendable {
     let success: Bool
     let sessionId: String?
 }
 
 // MARK: - User Models
 
-struct SISUserInfo: Codable, Sendable {
+nonisolated struct SISUserInfo: Codable, Sendable {
     let userId: Int
     let empNo: String
     let userName: String
@@ -68,7 +68,7 @@ struct SISUserInfo: Codable, Sendable {
     let grade: String
 }
 
-struct StudentProfile: Codable, Sendable {
+nonisolated struct StudentProfile: Codable, Sendable {
     let studentId: String
     let name: String
     let englishName: String
@@ -84,7 +84,7 @@ struct StudentProfile: Codable, Sendable {
     let admissionYear: String
 }
 
-struct StuBaseInfoResponse: Codable, Sendable {
+nonisolated struct StuBaseInfoResponse: Codable, Sendable {
     let statusCode: Int
     let result: StuBaseInfo
     let message: [String: String]?
@@ -107,7 +107,7 @@ struct StuBaseInfoResponse: Codable, Sendable {
 
 // MARK: - Score Models
 
-struct GradesInquiryResponse: Codable, Sendable {
+nonisolated struct GradesInquiryResponse: Codable, Sendable {
     let statusCode: Int
     let result: [GradeRecord]
     let message: [String: String]?
@@ -125,23 +125,42 @@ struct GradesInquiryResponse: Codable, Sendable {
         let confirmType: String
         let scoTypCNa: String
         let deferNote: String
-        let avaCouSn: Int?
+        let couClassify: [CourseClassify]?
+
+        var courseIdentifier: String {
+            if let avaCouSn = couClassify?.first?.avaCouSn {
+                return "\(avaCouSn)"
+            }
+
+            return "\(hy)-\(htPeriod)-\(couCNa)"
+        }
+    }
+
+    struct CourseClassify: Codable, Sendable {
+        let avaCouSn: Int
+        let couClassifyNo: Int
+        let couClassifyCna: String
+        let couClassifyEna: String
+        let couClassifyNoteCna: String
+        let couClassifyNoteEna: String
+        let displayOrder: Int
     }
 }
 
-struct ScoreQueryResponse: Codable, Sendable {
+nonisolated struct ScoreQueryResponse: Codable, Sendable {
     let academicYear: String
     let semester: String
     let courses: [ScoreCourse]
     let semesterGPA: Double
     let totalCredits: Int
+    let earnedCredits: Int
 }
 
-struct ScoreCourse: Codable, Sendable, Identifiable {
+nonisolated struct ScoreCourse: Codable, Sendable, Identifiable {
     let courseId: String
     let courseName: String
     let credits: Int
-    let score: Double
+    let score: Double?
     let grade: String
     let gpa: Double
     let instructor: String
@@ -152,14 +171,14 @@ struct ScoreCourse: Codable, Sendable, Identifiable {
 // MARK: - Certificate Models
 
 /// Response from GET /Education/api/OnlineStuStatusCertApply/GetStuInfo
-struct StuStatusCertInfoResponse: Codable, Sendable {
+nonisolated struct StuStatusCertInfoResponse: Codable, Sendable {
     let statusCode: Int
     let result: StuStatusCertInfo
     let message: AnyCodable?
     let errorMessage: [String]
 }
 
-struct StuStatusCertInfo: Codable, Sendable {
+nonisolated struct StuStatusCertInfo: Codable, Sendable {
     let stuNo: String
     let stuCNa: String
     let stuENa: String
@@ -172,7 +191,7 @@ struct StuStatusCertInfo: Codable, Sendable {
 }
 
 /// One semester entry returned by GetStuInfo
-struct StuStatusRecord: Codable, Sendable, Identifiable, Hashable {
+nonisolated struct StuStatusRecord: Codable, Sendable, Identifiable, Hashable {
     let hy: Int
     let ht: Int
     let stuNo: String
@@ -195,7 +214,7 @@ struct StuStatusRecord: Codable, Sendable, Identifiable, Hashable {
 }
 
 /// Flexible container for JSON values that may be {} or a string
-struct AnyCodable: Codable, Sendable {
+nonisolated struct AnyCodable: Codable, Sendable {
     init(from decoder: Decoder) throws {
         // Accept any JSON value; we don't need to read it
         _ = try? decoder.singleValueContainer()
@@ -206,7 +225,7 @@ struct AnyCodable: Codable, Sendable {
 // MARK: - Leave Models (matching real exploreLink API)
 
 /// One leave record from GET /StuLeave
-struct LeaveRecord: Codable, Sendable, Identifiable {
+nonisolated struct LeaveRecord: Codable, Sendable, Identifiable {
     let leaveApplySn: Int
     let hy: Int
     let ht: Int
@@ -236,7 +255,7 @@ struct LeaveRecord: Codable, Sendable, Identifiable {
     var id: Int { leaveApplySn }
 }
 
-struct LeaveListResponse: Codable, Sendable {
+nonisolated struct LeaveListResponse: Codable, Sendable {
     let statusCode: Int
     let result: LeaveListResult
     let message: AnyCodable?
@@ -255,13 +274,13 @@ struct LeaveListResponse: Codable, Sendable {
 
 // MARK: - Schedule Models
 
-struct CourseScheduleResponse: Codable, Sendable {
+nonisolated struct CourseScheduleResponse: Codable, Sendable {
     let academicYear: String
     let semester: String
     let courses: [ScheduleCourse]
 }
 
-struct ScheduleCourse: Codable, Sendable, Identifiable {
+nonisolated struct ScheduleCourse: Codable, Sendable, Identifiable {
     let courseId: String
     let courseName: String
     let instructor: String
@@ -271,7 +290,7 @@ struct ScheduleCourse: Codable, Sendable, Identifiable {
     var id: String { courseId }
 }
 
-struct ClassPeriod: Codable, Sendable, Identifiable {
+nonisolated struct ClassPeriod: Codable, Sendable, Identifiable {
     let dayOfWeek: Int
     let period: String
     let classroom: String
@@ -281,7 +300,7 @@ struct ClassPeriod: Codable, Sendable, Identifiable {
 
 // MARK: - Announcement Models
 
-struct AnnouncementResponse: Codable, Sendable {
+nonisolated struct AnnouncementResponse: Codable, Sendable {
     let statusCode: Int
     let result: AnnouncementResult
     
@@ -294,7 +313,7 @@ struct AnnouncementResponse: Codable, Sendable {
     }
 }
 
-struct SISAnnouncement: Codable, Sendable, Identifiable {
+nonisolated struct SISAnnouncement: Codable, Sendable, Identifiable {
     let announcementSn: Int
     let systemSn: Int
     let systemName: String
@@ -311,7 +330,7 @@ struct SISAnnouncement: Codable, Sendable, Identifiable {
 
 // MARK: - Error Models
 
-enum SISError: LocalizedError {
+nonisolated enum SISError: LocalizedError {
     case invalidCredentials
     case tokenExpired
     case networkError(Error)

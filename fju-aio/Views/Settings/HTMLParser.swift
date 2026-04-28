@@ -2,7 +2,7 @@ import Foundation
 import os.log
 
 final class HTMLParser: Sendable {
-    nonisolated(unsafe) static let shared = HTMLParser()
+    nonisolated static let shared = HTMLParser()
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.fju.aio", category: "HTMLParser")
     
     private init() {}
@@ -160,7 +160,8 @@ final class HTMLParser: Sendable {
             department: department,
             courseType: courseType,
             schedules: schedules,
-            notes: notes?.isEmpty == false ? notes : nil
+            notes: notes?.isEmpty == false ? notes : nil,
+            outline: nil
         )
     }
     
@@ -279,7 +280,7 @@ final class HTMLParser: Sendable {
             guard let openRange = Range(openMatch.range, in: rowHTML) else { break }
             
             // Start content after the opening tag
-            var contentStart = openRange.upperBound
+            let contentStart = openRange.upperBound
             var depth = 1
             var cursor = contentStart
             
@@ -339,4 +340,3 @@ final class HTMLParser: Sendable {
         return isError
     }
 }
-

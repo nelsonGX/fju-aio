@@ -2,6 +2,7 @@ import SwiftUI
 
 struct CourseScheduleView: View {
     @Environment(\.fjuService) private var service
+    @Environment(SyncStatusManager.self) private var syncStatus
     @State private var courses: [Course] = []
     @State private var isLoading = true
     @State private var availableSemesters: [String] = []
@@ -78,7 +79,7 @@ struct CourseScheduleView: View {
                     navigateToCampusMap = true
                 }
             })
-            .presentationDetents([.medium])
+            .presentationDetents([.medium, .large])
         }
         .navigationDestination(isPresented: $navigateToCampusMap) {
             CampusMapView(highlightLocation: mapHighlightLocation)
@@ -178,7 +179,7 @@ struct CourseScheduleView: View {
     }
 
     private func courseBlocks(colWidth: CGFloat) -> some View {
-        ForEach(courses) { course in
+        ForEach(courses.filter { $0.dayOfWeekNumber >= 1 && $0.dayOfWeekNumber <= 5 && displayPeriods.contains($0.startPeriod) }) { course in
             let dayIndex = course.dayOfWeekNumber - 1
             let x = timeColumnWidth + CGFloat(dayIndex) * colWidth + 1.5
             let y = CGFloat(course.startPeriod - displayPeriods.lowerBound) * periodHeight + 1
@@ -228,20 +229,27 @@ struct CourseScheduleView: View {
         if !forceRefresh, let cached = cache.getCourses(semester: selectedSemester) {
             courses = cached
             isLoading = false
+            scheduleCourseNotifications(for: cached)
             return
         }
 
         isLoading = true
         do {
-            let fetched = try await service.fetchCourses(semester: selectedSemester)
-            courses = fetched
-            cache.setCourses(fetched, semester: selectedSemester)
+            try await syncStatus.withSync("正在載入課表…") {
+                let fetched = try await service.fetchCourses(semester: selectedSemester)
+                courses = fetched
+                cache.setCourses(fetched, semester: selectedSemester)
+            }
         } catch {
             courses = []
         }
         isLoading = false
 
         // Schedule notifications and Live Activity in the background after UI is shown
+        scheduleCourseNotifications(for: courses)
+    }
+
+    private func scheduleCourseNotifications(for courses: [Course]) {
         let snapshot = courses
         Task(priority: .background) {
             await CourseNotificationManager.shared.scheduleAll(for: snapshot)

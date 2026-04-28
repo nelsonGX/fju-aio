@@ -6,7 +6,6 @@ struct LeaveRequestView: View {
 
     enum Tab: String, CaseIterable {
         case history = "歷史假單"
-        case apply = "申請請假"
         case stats = "請假統計"
     }
 
@@ -26,13 +25,24 @@ struct LeaveRequestView: View {
             Group {
                 switch selectedTab {
                 case .history: LeaveHistoryView()
-                case .apply:   LeaveApplyView()
                 case .stats:   LeaveStatsView()
                 }
             }
         }
         .navigationTitle("請假申請")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink {
+                    LeaveApplyWizard()
+                        .navigationTitle("申請假單")
+                        .navigationBarTitleDisplayMode(.inline)
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .accessibilityLabel("申請假單")
+            }
+        }
     }
 }
 
@@ -270,9 +280,9 @@ private struct LeaveRecordRow: View {
     }
 }
 
-// MARK: - Apply Tab
+// MARK: - Apply Tab — 4-Step Wizard
 
-private struct LeaveApplyView: View {
+private struct LeaveApplyWizard: View {
     private let leaveService = LeaveService.shared
     let mode: Mode
     let onSaved: (() -> Void)?
@@ -308,7 +318,13 @@ private struct LeaveApplyView: View {
         self.onSaved = onSaved
     }
 
-    // Reference data
+    // Wizard navigation
+    @State private var step: Int = 0           // 0=rules modal, 1–4 = wizard steps
+    @State private var showRulesModal = true
+
+    // Reference data (fetched on load)
+    @State private var isLoadingRef = true
+    @State private var loadRefError: String?
     @State private var academicYears: [HyRecord] = []
     @State private var leaveKindCategories: [LeaveKind] = []  // 一般請假, 考試請假
     @State private var examKinds: [LeaveKind] = []
@@ -340,10 +356,8 @@ private struct LeaveApplyView: View {
     @State private var downloadingDocSn: Int?
     @State private var downloadedProofFile: DownloadedProofFile?
 
-    enum SubmitResult {
-        case success(Int)
-        case failure(String)
-    }
+    // Wizard draft shared across steps
+    @State private var draft = LeaveWizardDraft()
 
     struct ProofFileItem {
         let data: Data
@@ -414,42 +428,121 @@ private struct LeaveApplyView: View {
 
     var body: some View {
         Group {
-            if isLoading {
+            if isLoadingRef {
                 ProgressView("載入中…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let error = loadError {
+            } else if let error = loadRefError {
                 VStack(spacing: 12) {
                     Text("載入失敗：\(error)")
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
-                    Button("重試") { Task { await loadReferenceData() } }
+                    Button("重試") { Task { await loadRef() } }
                 }
                 .padding()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if didSubmit {
+                SubmitSuccessView(applyNo: submittedApplyNo) {
+                    // Reset wizard to start a new application
+                    draft = LeaveWizardDraft()
+                    selCouCourses = []
+                    selectedEntries = []
+                    didSubmit = false
+                    step = 1
+                    showRulesModal = false
+                }
             } else {
-                Form {
-                    // MARK: 學年度 / 學期
-                    Section("學年度與學期") {
-                        Picker("學年度", selection: $selectedHy) {
-                            Text("請選擇").tag(Optional<HyRecord>.none)
-                            ForEach(academicYears) { hy in
-                                Text(hy.hyNa).tag(Optional(hy))
-                            }
+                wizardContent
+            }
+        }
+        .task { await loadRef() }
+        .sheet(isPresented: $showRulesModal) {
+            LeaveRulesModal {
+                showRulesModal = false
+                step = 1
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var wizardContent: some View {
+        VStack(spacing: 0) {
+            // Step indicator
+            StepIndicator(current: step, total: 4)
+                .padding(.horizontal)
+                .padding(.vertical, 10)
+
+            Divider()
+
+            // Step content
+            ScrollView {
+                switch step {
+                case 1:
+                    Step1CategoryView(draft: $draft)
+                        .padding()
+                case 2:
+                    Step2FormView(
+                        draft: $draft,
+                        academicYears: academicYears,
+                        leaveSubtypes: leaveSubtypes,
+                        sections: sections,
+                        famTypes: famTypes,
+                        famLevels: famLevels
+                    )
+                    .padding()
+                case 3:
+                    Step3CoursesView(
+                        courses: selCouCourses,
+                        selectedEntries: $selectedEntries,
+                        sections: sections
+                    )
+                    .padding()
+                case 4:
+                    Step4ConfirmView(
+                        draft: draft,
+                        courses: selCouCourses,
+                        selectedEntries: selectedEntries,
+                        sections: sections
+                    )
+                    .padding()
+                default:
+                    EmptyView()
+                }
+            }
+
+            if let err = processError {
+                Text(err)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .padding(.horizontal)
+                    .padding(.top, 4)
+            }
+
+            Divider()
+
+            // Navigation buttons
+            HStack(spacing: 16) {
+                if step > 1 {
+                    Button("上一步") {
+                        // Going back to Step 1 means the category may change → discard draft
+                        if step == 2 {
+                            draft.leaveApplySn = 0
+                            draft.applyNo = ""
                         }
-                        Picker("學期", selection: $selectedHt) {
-                            Text("第 1 學期").tag(1)
-                            Text("第 2 學期").tag(2)
-                        }
+                        withAnimation { step -= 1 }
+                        processError = nil
                     }
                     .disabled(mode.isReadOnly)
 
-                    // MARK: 假別 / 考試類別
-                    Section("假別") {
-                        Picker("請假性質", selection: $selectedCategory) {
-                            Text("請選擇").tag(Optional<LeaveKind>.none)
-                            ForEach(leaveKindCategories) { cat in
-                                Text(cat.leaveNa).tag(Optional(cat))
-                            }
+                Spacer()
+
+                if step < 4 {
+                    Button {
+                        Task { await advanceStep() }
+                    } label: {
+                        if isProcessing {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Text("下一步")
                         }
                         .onChange(of: selectedCategory) { _, newVal in
                             selectedExamKind = (newVal?.value == 20) ? examKinds.first : nil
@@ -465,6 +558,141 @@ private struct LeaveApplyView: View {
                             }
                             .onChange(of: selectedExamKind) { _, _ in syncSelectedLeaveType() }
                         }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isProcessing)
+                }
+            }
+            .padding()
+        }
+    }
+
+    // MARK: - Validation
+
+    private var canAdvance: Bool {
+        switch step {
+        case 1: return true
+        case 2:
+            return !draft.beginDate.isEmpty &&
+                   !draft.endDate.isEmpty &&
+                   !draft.leaveReason.trimmingCharacters(in: .whitespaces).isEmpty &&
+                   !draft.phoneNumber.trimmingCharacters(in: .whitespaces).isEmpty &&
+                   isValidEmail(draft.emailAccount)
+        case 3: return true   // Can proceed even with no courses selected
+        default: return true
+        }
+    }
+
+    private func isValidEmail(_ email: String) -> Bool {
+        let t = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.contains("@") && t.contains(".")
+    }
+
+    // MARK: - Navigation logic
+
+    private func advanceStep() async {
+        processError = nil
+        switch step {
+        case 2:
+            isProcessing = true
+            do {
+                let sn: Int
+                if draft.leaveApplySn > 0 {
+                    // Already created on a previous forward pass — reuse it, don't create another
+                    sn = draft.leaveApplySn
+                } else {
+                    // POST /StuLeave to create the draft record
+                    sn = try await leaveService.submitLeave(
+                        academicYear: draft.hy,
+                        semester: draft.ht,
+                        leaveKind: draft.leaveKind,
+                        examKind: 0,
+                        refLeaveSn: draft.refLeaveSn,
+                        beginDate: draft.beginDate,
+                        endDate: draft.endDate,
+                        beginSectNo: draft.beginSectNo,
+                        endSectNo: draft.endSectNo,
+                        reason: draft.leaveReason,
+                        phoneNumber: draft.phoneNumber,
+                        emailAccount: draft.emailAccount,
+                        proofFileData: draft.proofFileData,
+                        proofFileExt: draft.proofFileExt
+                    )
+                    draft.leaveApplySn = sn
+                }
+                // Fetch (or re-fetch) matched courses
+                selCouCourses = try await leaveService.fetchSelCouCourses(leaveApplySn: sn)
+                // Pre-select all matched dates
+                selectedEntries = Set(selCouCourses.flatMap { course in
+                    course.leaveDates.map { d in entryKey(course: course, date: d) }
+                })
+                withAnimation { step = 3 }
+            } catch {
+                processError = error.localizedDescription
+            }
+            isProcessing = false
+        case 3:
+            // POST /StuLeave/{sn}/SelCou with selected entries
+            isProcessing = true
+            do {
+                let session = try await SISAuthService.shared.getValidSession()
+                let entries = buildSelCouEntries(stuNo: session.empNo)
+                try await leaveService.selectCourses(entries, forLeave: draft.leaveApplySn)
+                withAnimation { step = 4 }
+            } catch {
+                processError = error.localizedDescription
+            }
+            isProcessing = false
+        default:
+            withAnimation { step += 1 }
+        }
+    }
+
+    private func finalSubmit() async {
+        processError = nil
+        isProcessing = true
+        do {
+            try await leaveService.confirmLeave(leaveApplySn: draft.leaveApplySn)
+            submittedApplyNo = draft.applyNo.isEmpty ? "\(draft.leaveApplySn)" : draft.applyNo
+            didSubmit = true
+        } catch {
+            processError = error.localizedDescription
+        }
+        isProcessing = false
+    }
+
+    // MARK: - Helpers
+
+    private func entryKey(course: LeaveSelCouCourse, date: LeaveSelCouDate) -> String {
+        "\(course.jonCouSn)-\(date.couDate)-\(date.sectNo)"
+    }
+
+    private func buildSelCouEntries(stuNo: String) -> [SelCouPostEntry] {
+        // One entry per course. Each entry contains all selected seqTims + all unique couDates.
+        selCouCourses.compactMap { course in
+            let selectedDates = course.leaveDates.filter {
+                selectedEntries.contains(entryKey(course: course, date: $0))
+            }
+            guard !selectedDates.isEmpty else { return nil }
+
+            // seqTims: one item per selected date+period
+            let seqTims = selectedDates.map { d in
+                let sectionName = sections.first { $0.sectNo == d.sectNo }?.sectNa ?? "D\(d.sectNo)"
+                return SelCouSeqTim(
+                    section: sectionName,
+                    leaveSeqTimSn: 0,
+                    leaveApplySn: draft.leaveApplySn,
+                    jonCouSn: course.jonCouSn,
+                    avaCouSn: course.avaCouSn,
+                    stuNo: stuNo,
+                    couDate: d.couDate + "T00:00:00",
+                    couWek: course.couWek,
+                    sectNo: d.sectNo
+                )
+            }
+
+            // couDates: plain date strings, one per unique date
+            let couDates = Array(Set(selectedDates.map { $0.couDate + "T00:00:00" })).sorted()
 
                         Picker("請假類別", selection: $selectedLeaveType) {
                             Text("請選擇").tag(Optional<RefLeave>.none)
@@ -481,13 +709,138 @@ private struct LeaveApplyView: View {
                     }
                     .disabled(mode.isReadOnly)
 
-                    // MARK: 請假日期
-                    Section("請假日期") {
-                        DatePicker("開始日期", selection: $beginDate, displayedComponents: .date)
-                            .onChange(of: beginDate) { _, v in
-                                if endDate < v { endDate = v }
-                            }
-                        DatePicker("結束日期", selection: $endDate, in: beginDate..., displayedComponents: .date)
+// MARK: - Step 1: 選擇請假性質
+
+private struct Step1CategoryView: View {
+    @Binding var draft: LeaveWizardDraft
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Text("請擇一申請")
+                .font(.headline)
+
+            VStack(spacing: 12) {
+                categoryButton(kind: 1, title: "一般請假", subtitle: "事假、病假、喪假等")
+                categoryButton(kind: 2, title: "考試請假", subtitle: "期中考、期末考等考試期間")
+            }
+
+            if draft.leaveKind == 1 {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("一般請假注意事項", systemImage: "info.circle")
+                        .font(.subheadline.weight(.semibold))
+
+                    Text("• 請假需於規定時間內申請，逾期無法補登。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("• 公假及考試假不適用此流程，請洽各系辦公室。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("• 日間部諮詢：02-29052231　進修部：02-29052247")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding()
+                .background(Color.blue.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func categoryButton(kind: Int, title: String, subtitle: String) -> some View {
+        Button {
+            draft.leaveKind = kind
+        } label: {
+            HStack(spacing: 14) {
+                Image(systemName: draft.leaveKind == kind ? "checkmark.circle.fill" : "circle")
+                    .font(.title2)
+                    .foregroundStyle(draft.leaveKind == kind ? Color.accentColor : Color.secondary)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.body.weight(.semibold))
+                    Text(subtitle).font(.caption).foregroundStyle(.secondary)
+                }
+
+                Spacer()
+            }
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(draft.leaveKind == kind ? Color.accentColor.opacity(0.08) : Color(uiColor: .secondarySystemGroupedBackground))
+                    .stroke(draft.leaveKind == kind ? Color.accentColor : Color.clear, lineWidth: 1.5)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Step 2: 填寫假單詳細內容
+
+private struct Step2FormView: View {
+    @Binding var draft: LeaveWizardDraft
+    let academicYears: [HyRecord]
+    let leaveSubtypes: [LeaveKind]
+    let sections: [CourseSection]
+    let famTypes: [FamTypeItem]
+    let famLevels: [FamLevelItem]
+
+    @State private var showDocPicker = false
+
+    // Helper: does the selected subtype require family relationship fields?
+    private var isBereavementLeave: Bool {
+        leaveSubtypes.first { $0.value == draft.refLeaveSn }?.requiresFamilyFields ?? false
+    }
+
+    private var selectedSubtypeLabel: String {
+        leaveSubtypes.first { $0.value == draft.refLeaveSn }?.label ?? "—"
+    }
+
+    // Date formatter for display/API
+    private let df: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+
+    private var beginDateBinding: Binding<Date> {
+        Binding(
+            get: { df.date(from: draft.beginDate) ?? Date() },
+            set: { draft.beginDate = df.string(from: $0)
+                   // Cascade end date if it falls before begin
+                   if let end = df.date(from: draft.endDate), end < $0 {
+                       draft.endDate = df.string(from: $0)
+                   }
+            }
+        )
+    }
+
+    private var endDateBinding: Binding<Date> {
+        Binding(
+            get: { df.date(from: draft.endDate) ?? Date() },
+            set: { draft.endDate = df.string(from: $0) }
+        )
+    }
+
+    private var beginDateLower: Date { df.date(from: draft.beginDate) ?? Date() }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Header bar
+            HStack(spacing: 16) {
+                infoChip(label: "學年度", value: "\(draft.hy)")
+                infoChip(label: "學期", value: "第 \(draft.ht) 學期")
+                infoChip(label: "性質", value: draft.leaveKind == 1 ? "一般" : "考試")
+            }
+            .padding(.bottom, 16)
+
+            // Academic year / semester
+            VStack(alignment: .leading, spacing: 12) {
+                formLabel("學年度 / 學期")
+                HStack(spacing: 12) {
+                    Picker("學年度", selection: $draft.hy) {
+                        ForEach(academicYears) { hy in
+                            Text(hy.hyNa).tag(hy.hy)
+                        }
                     }
                     .disabled(mode.isReadOnly)
 
@@ -497,14 +850,30 @@ private struct LeaveApplyView: View {
                             ForEach(sections) { section in
                                 Text(section.displayName).tag(section.sectNo)
                             }
+                            .pickerStyle(.menu)
                         }
                         Picker("結束節次", selection: $endSectNo) {
                             ForEach(sections.filter { $0.sectNo >= beginSectNo }) { section in
                                 Text(section.displayName).tag(section.sectNo)
                             }
+                            .pickerStyle(.menu)
                         }
-                        .onChange(of: beginSectNo) { _, v in
-                            if endSectNo < v { endSectNo = v }
+                    }
+                }
+            }
+            .padding(.bottom, 16)
+
+            // Start date + section
+            VStack(alignment: .leading, spacing: 8) {
+                formLabel("開始時間")
+                HStack(spacing: 12) {
+                    DatePicker("", selection: beginDateBinding, displayedComponents: .date)
+                        .labelsHidden()
+                        .frame(maxWidth: .infinity)
+
+                    Picker("開始節次", selection: $draft.beginSectNo) {
+                        ForEach(sections) { s in
+                            Text(s.displayLabel).tag(s.sectNo)
                         }
                     }
                     .disabled(mode.isReadOnly)
@@ -584,6 +953,10 @@ private struct LeaveApplyView: View {
                             }
                         }
                     }
+                    .padding(10)
+                    .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 8))
+            }
+            .padding(.bottom, 16)
 
                     // MARK: 送出
                     if !mode.isReadOnly {
@@ -604,6 +977,7 @@ private struct LeaveApplyView: View {
                         .disabled(!canSubmit)
                         }
                     }
+                    .buttonStyle(.bordered)
                 }
             }
         }
@@ -659,7 +1033,12 @@ private struct LeaveApplyView: View {
         }
     }
 
-    // MARK: - Helpers
+    @ViewBuilder
+    private func formLabel(_ title: String) -> some View {
+        Text(title)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.primary)
+    }
 
     private var alertTitle: String {
         if case .success = submitResult { return mode.leaveApplySn == nil ? "假單建立成功" : "假單儲存成功" }
@@ -677,10 +1056,14 @@ private struct LeaveApplyView: View {
         case nil: return ""
         }
     }
+}
 
-    private func loadReferenceData() async {
-        isLoading = true
-        loadError = nil
+private struct CourseCardView: View {
+    let index: Int
+    let course: LeaveSelCouCourse
+    @Binding var selectedEntries: Set<String>
+    let sections: [CourseSection]
+    let dayNames: [String]
 
         async let hyTask    = leaveService.fetchAcademicYears()
         async let kindsTask = leaveService.fetchLeaveKinds()
@@ -689,14 +1072,11 @@ private struct LeaveApplyView: View {
         async let sectionsTask = leaveService.fetchSections()
         async let profileTask = SISService.shared.getStudentProfile()
 
-        do {
-            academicYears = try await hyTask
-            selectedHy = academicYears.first
-        } catch {
-            loadError = error.localizedDescription
-            isLoading = false
-            return
+    private var allSelected: Bool {
+        course.leaveDates.allSatisfy { d in
+            selectedEntries.contains(entryKey(d))
         }
+    }
 
         do {
             leaveKindCategories = try await kindsTask
@@ -717,13 +1097,44 @@ private struct LeaveApplyView: View {
             isLoading = false
             return
         }
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.secondary.opacity(0.15), lineWidth: 1)
+        )
+    }
 
-        if let profile = try? await profileTask {
-            if phoneNumber.isEmpty { phoneNumber = profile.phone }
-            if emailAccount.isEmpty { emailAccount = profile.email }
+    @ViewBuilder
+    private func infoRow(icon: String, text: String) -> some View {
+        HStack {
+            Image(systemName: icon).foregroundStyle(.secondary).frame(width: 16)
+            Text(text).font(.caption).foregroundStyle(.secondary)
         }
+    }
+}
 
-        isLoading = false
+// MARK: - Simple flow layout for date pills
+
+private struct FlowLayout: Layout {
+    var spacing: CGFloat = 4
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? .infinity
+        var height: CGFloat = 0
+        var x: CGFloat = 0
+        var rowH: CGFloat = 0
+        for v in subviews {
+            let size = v.sizeThatFits(.unspecified)
+            if x + size.width > width && x > 0 {
+                height += rowH + spacing
+                x = 0
+                rowH = 0
+            }
+            rowH = max(rowH, size.height)
+            x += size.width + spacing
+        }
+        height += rowH
+        return CGSize(width: width, height: height)
     }
 
     private func apply(_ detail: LeaveDetail) {
@@ -749,6 +1160,7 @@ private struct LeaveApplyView: View {
         let t = email.trimmingCharacters(in: .whitespacesAndNewlines)
         return t.contains("@") && t.contains(".")
     }
+}
 
     private func syncSelectedLeaveType() {
         let options = availableLeaveTypes
@@ -800,8 +1212,17 @@ private struct LeaveApplyView: View {
         guard let hy = selectedHy, let category = selectedCategory, let leaveType = selectedLeaveType else { return }
         isSubmitting = true
 
+    private func dayOfWeekLabel(_ dateStr: String) -> String {
         let df = DateFormatter()
         df.dateFormat = "yyyy-MM-dd"
+        df.locale = Locale(identifier: "en_US_POSIX")
+        guard let d = df.date(from: dateStr) else { return "" }
+        let cal = Calendar.current
+        let weekday = cal.component(.weekday, from: d)
+        // weekday: 1=Sun…7=Sat; map to Mon=一…Sun=日
+        let idx = weekday == 1 ? 7 : weekday - 1
+        return "星期\(dayNames[idx])"
+    }
 
         do {
             let leaveApplySn = try await leaveService.submitLeave(
@@ -834,8 +1255,112 @@ private struct LeaveApplyView: View {
         } catch {
             submitResult = .failure(error.localizedDescription)
         }
+    }
 
-        isSubmitting = false
+    @ViewBuilder
+    private func confirmRow(label: String, value: String) -> some View {
+        HStack {
+            Text(label).foregroundStyle(.secondary).font(.subheadline)
+            Spacer()
+            Text(value).font(.subheadline.weight(.medium))
+        }
+    }
+}
+
+private struct ConfirmCourseCard: View {
+    let index: Int
+    let course: LeaveSelCouCourse
+    let dates: [LeaveSelCouDate]
+    let sections: [CourseSection]
+    let dayNames: [String]
+
+    private func sectLabel(_ no: Int) -> String {
+        sections.first { $0.sectNo == no }?.sectNa ?? "D\(no)"
+    }
+
+    private func shortDate(_ isoStr: String) -> String {
+        String(isoStr.prefix(10))
+    }
+
+    private func dayLabel(_ wek: String) -> String {
+        let n = Int(wek) ?? 0
+        guard n >= 1 && n <= 7 else { return "" }
+        return "週\(dayNames[n])"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("\(index)")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 20, height: 20)
+                    .background(Color.green, in: Circle())
+                Text(course.couCNa).font(.subheadline.weight(.semibold))
+                Spacer()
+                Text(course.couNo).font(.caption2).foregroundStyle(.secondary)
+            }
+            if let tchCNa = course.tchCNa {
+                Label(tchCNa, systemImage: "person")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            HStack(spacing: 4) {
+                Text(dayLabel(course.couWek)).font(.caption)
+                ForEach(course.sectNos, id: \.self) { sno in
+                    Text(sectLabel(sno))
+                        .font(.caption2.weight(.medium))
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(Color.accentColor.opacity(0.12), in: Capsule())
+                }
+            }
+            FlowLayout(spacing: 4) {
+                ForEach(dates) { d in
+                    Text(shortDate(d.couDate))
+                        .font(.caption2.weight(.medium))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .foregroundStyle(.white)
+                        .background(Color.green, in: Capsule())
+                }
+            }
+        }
+        .padding(10)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.green.opacity(0.3), lineWidth: 1))
+    }
+}
+
+// MARK: - Submit Success View
+
+private struct SubmitSuccessView: View {
+    let applyNo: String
+    let onNewApplication: () -> Void
+
+    var body: some View {
+        VStack(spacing: 24) {
+            Spacer()
+            Image(systemName: "checkmark.seal.fill")
+                .font(.system(size: 60))
+                .foregroundStyle(.green)
+            Text("假單送出成功")
+                .font(.title2.weight(.semibold))
+            Text("假單號：\(applyNo)")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Text("假單已送出，請等待各級主管審核。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Spacer()
+            Button("再申請一筆") {
+                onNewApplication()
+            }
+            .buttonStyle(.borderedProminent)
+            .padding(.bottom)
+        }
+        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -851,6 +1376,10 @@ private struct LeaveStatsView: View {
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var deadline: String?
+
+    private var stats: [LeaveStatRecord] {
+        statSummary?.statLeaveCouList ?? []
+    }
 
     var body: some View {
         Group {

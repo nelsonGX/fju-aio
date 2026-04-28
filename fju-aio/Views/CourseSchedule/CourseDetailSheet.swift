@@ -65,6 +65,80 @@ struct CourseDetailSheet: View {
                             .font(.subheadline)
                     }
                 }
+
+                if let outline = course.outline, outline.hasContent {
+                    if let objective = outline.objective {
+                        Section("課程目標") {
+                            Text(objective)
+                                .font(.subheadline)
+                        }
+                    }
+
+                    if !outline.weeklyPlans.isEmpty {
+                        Section("課程進度") {
+                            ForEach(outline.weeklyPlans) { plan in
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("第 \(plan.week) 週")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+
+                                    if !plan.title.isEmpty {
+                                        Text(plan.title)
+                                            .font(.subheadline)
+                                    }
+
+                                    if let other = plan.other {
+                                        Text(other)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                .padding(.vertical, 3)
+                            }
+                        }
+                    }
+
+                    if outline.teachingMaterials != nil ||
+                        outline.textbook != nil ||
+                        outline.referenceBook != nil {
+                        Section("教材") {
+                            if let teachingMaterials = outline.teachingMaterials {
+                                DetailTextRow(label: "授課教材", value: teachingMaterials)
+                            }
+                            if let textbook = outline.textbook {
+                                DetailTextRow(label: "教科書", value: textbook)
+                            }
+                            if let referenceBook = outline.referenceBook {
+                                DetailTextRow(label: "參考書", value: referenceBook)
+                            }
+                        }
+                    }
+
+                    if outline.policies != nil ||
+                        outline.otherNotes != nil ||
+                        outline.contact != nil ||
+                        outline.officeHours != nil ||
+                        outline.externalURL != nil {
+                        Section("其他資訊") {
+                            if let policies = outline.policies {
+                                DetailTextRow(label: "課程規範", value: policies)
+                            }
+                            if let otherNotes = outline.otherNotes {
+                                DetailTextRow(label: "補充說明", value: otherNotes)
+                            }
+                            if let contact = outline.contact {
+                                DetailTextRow(label: "聯絡方式", value: contact)
+                            }
+                            if let officeHours = outline.officeHours {
+                                DetailTextRow(label: "Office Hours", value: officeHours)
+                            }
+                            if let urlString = outline.externalURL,
+                               let url = URL(string: urlString) {
+                                Link("開啟完整課綱", destination: url)
+                            }
+                        }
+                    }
+                }
             }
             .listStyle(.insetGrouped)
             .navigationTitle("課程資訊")
@@ -101,6 +175,22 @@ struct CourseDetailSheet: View {
         let lat = building.coordinate.latitude
         let lng = building.coordinate.longitude
         return URL(string: "comgooglemaps://?daddr=\(lat),\(lng)&directionsmode=walking&zoom=17")
+    }
+}
+
+private struct DetailTextRow: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.subheadline)
+        }
+        .padding(.vertical, 2)
     }
 }
 
