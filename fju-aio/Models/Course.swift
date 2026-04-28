@@ -1,6 +1,6 @@
 import Foundation
 
-struct Course: Identifiable, Hashable, Sendable {
+nonisolated struct Course: Identifiable, Hashable, Sendable {
     let id: String
     let name: String
     let code: String
@@ -121,7 +121,7 @@ struct Course: Identifiable, Hashable, Sendable {
     }
 }
 
-struct CourseOutlineDetails: Hashable, Sendable {
+nonisolated struct CourseOutlineDetails: Hashable, Sendable {
     let objective: String?
     let teachingMaterials: String?
     let textbook: String?
@@ -147,7 +147,7 @@ struct CourseOutlineDetails: Hashable, Sendable {
     }
 }
 
-struct WeeklyCoursePlan: Identifiable, Hashable, Sendable {
+nonisolated struct WeeklyCoursePlan: Identifiable, Hashable, Sendable {
     let week: Int
     let unit: String?
     let theme: String?
@@ -166,7 +166,7 @@ struct WeeklyCoursePlan: Identifiable, Hashable, Sendable {
     }
 }
 
-enum FJUPeriod {
+nonisolated enum FJUPeriod {
     // Index 0 = period 1 (D1), index 4 = noon (DN), index 10 = period D10
     static let periodTimes: [(start: String, end: String)] = [
         ("08:10", "09:00"),  // 1  D1
@@ -206,7 +206,7 @@ enum FJUPeriod {
 
 // MARK: - Array Extension
 
-private extension Array {
+private nonisolated extension Array {
     subscript(safe index: Index) -> Element? {
         indices.contains(index) ? self[index] : nil
     }

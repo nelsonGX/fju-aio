@@ -2,7 +2,7 @@ import Foundation
 import os.log
 
 actor TronClassAPIService {
-    static let shared = TronClassAPIService()
+    nonisolated static let shared = TronClassAPIService()
     
     private let baseURL = "https://elearn2.fju.edu.tw"
     private let outlineBaseURL = "https://travellerlink.fju.edu.tw"

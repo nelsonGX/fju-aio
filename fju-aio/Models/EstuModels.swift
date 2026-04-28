@@ -1,7 +1,7 @@
 import Foundation
 
 /// A single time slot for a course (day + period range + classroom)
-struct EstuScheduleSlot: Hashable, Sendable {
+nonisolated struct EstuScheduleSlot: Hashable, Sendable {
     let dayOfWeek: String   // "一", "二", etc.
     let weeks: String       // "全", "單", "雙"
     let periods: String     // Raw period string e.g. "D3-D4"
@@ -65,7 +65,7 @@ struct EstuScheduleSlot: Hashable, Sendable {
 }
 
 // Estu-specific course model
-struct EstuCourse: Identifiable, Hashable, Sendable {
+nonisolated struct EstuCourse: Identifiable, Hashable, Sendable {
     let id: String
     let name: String
     let code: String

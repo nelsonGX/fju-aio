@@ -2,7 +2,7 @@ import Foundation
 import os.log
 
 actor EstuAuthService {
-    static let shared = EstuAuthService()
+    nonisolated static let shared = EstuAuthService()
     
     private let baseURL = "http://estu.fju.edu.tw"
     private let loginPath = "/CheckSelList/HisListNew.aspx"
@@ -234,7 +234,7 @@ actor EstuAuthService {
 
 // MARK: - Dictionary Extension
 
-private extension Dictionary where Key == String, Value == String {
+private nonisolated extension Dictionary where Key == String, Value == String {
     func percentEncoded() -> Data? {
         // Use a restricted character set for application/x-www-form-urlencoded
         // This must NOT include +, =, &, / which are significant in form encoding

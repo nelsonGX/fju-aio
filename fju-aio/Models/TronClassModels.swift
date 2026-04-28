@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Authentication Models
 
-struct TronClassSession: Codable, Sendable {
+nonisolated struct TronClassSession: Codable, Sendable {
     let sessionId: String
     let userId: Int
     let expiresAt: Date
@@ -12,13 +12,13 @@ struct TronClassSession: Codable, Sendable {
     }
 }
 
-struct CASLoginResponse: Codable, Sendable {
+nonisolated struct CASLoginResponse: Codable, Sendable {
     let user_id: Int
 }
 
 // MARK: - Authentication Errors
 
-enum AuthenticationError: LocalizedError {
+nonisolated enum AuthenticationError: LocalizedError {
     case invalidCredentials
     case networkError(Error)
     case invalidResponse
@@ -43,11 +43,11 @@ enum AuthenticationError: LocalizedError {
 }
 // MARK: - Todos Models
 
-struct TodosResponse: Codable, Sendable {
+nonisolated struct TodosResponse: Codable, Sendable {
     let todo_list: [TodoItem]
 }
 
-struct TodoItem: Codable, Sendable, Identifiable {
+nonisolated struct TodoItem: Codable, Sendable, Identifiable {
     let id: Int
     let title: String
     let type: TodoType
@@ -98,7 +98,7 @@ struct TodoItem: Codable, Sendable, Identifiable {
     }
 }
 
-enum TodoType: String, Codable, Sendable {
+nonisolated enum TodoType: String, Codable, Sendable {
     case homework
     case exam
     case questionnaire
@@ -112,7 +112,7 @@ enum TodoType: String, Codable, Sendable {
     }
 }
 
-struct Prerequisite: Codable, Sendable {
+nonisolated struct Prerequisite: Codable, Sendable {
     let activity_id: Int
     let activity_type: String
     let key: String
@@ -120,7 +120,7 @@ struct Prerequisite: Codable, Sendable {
     let completion_criterion: CompletionCriterion
 }
 
-struct CompletionCriterion: Codable, Sendable {
+nonisolated struct CompletionCriterion: Codable, Sendable {
     let criterion_key: String
     let criterion_text: String
     let has_completed: Bool
@@ -129,7 +129,7 @@ struct CompletionCriterion: Codable, Sendable {
 
 // MARK: - Course Outline Models
 
-struct TronClassMyCoursesRequest: Encodable, Sendable {
+nonisolated struct TronClassMyCoursesRequest: Encodable, Sendable {
     let fields = "id,name,course_code"
     let page = 1
     let page_size = 100
@@ -144,28 +144,28 @@ struct TronClassMyCoursesRequest: Encodable, Sendable {
     }
 }
 
-struct TronClassMyCoursesResponse: Decodable, Sendable {
+nonisolated struct TronClassMyCoursesResponse: Decodable, Sendable {
     let courses: [TronClassCourseSummary]
 }
 
-struct TronClassCourseSummary: Decodable, Sendable, Identifiable {
+nonisolated struct TronClassCourseSummary: Decodable, Sendable, Identifiable {
     let id: Int
     let name: String
     let course_code: String
 }
 
-struct TronClassCourseOutlineResponse: Decodable, Sendable {
+nonisolated struct TronClassCourseOutlineResponse: Decodable, Sendable {
     let id: Int
     let external_url: String?
     let status: String?
 }
 
-struct OutlineAPIResponse<Result: Decodable>: Decodable {
+nonisolated struct OutlineAPIResponse<Result: Decodable>: Decodable {
     let statusCode: Int
     let result: Result
 }
 
-struct OutlineCourseInfoAndBook: Decodable, Sendable {
+nonisolated struct OutlineCourseInfoAndBook: Decodable, Sendable {
     let jonCouSn: Int
     let cm: String?
     let book: String?
@@ -178,14 +178,14 @@ struct OutlineCourseInfoAndBook: Decodable, Sendable {
     let dptObj: String?
 }
 
-struct OutlineCourseCP: Decodable, Sendable {
+nonisolated struct OutlineCourseCP: Decodable, Sendable {
     let jonCouSn: Int
     let couHr: Double?
     let atLeastWeekCnt: Int?
     let weeklyCP: [OutlineWeeklyCP]
 }
 
-struct OutlineWeeklyCP: Decodable, Sendable {
+nonisolated struct OutlineWeeklyCP: Decodable, Sendable {
     let cweek: Int
     let unit: String?
     let theme: String?
@@ -197,7 +197,7 @@ struct OutlineWeeklyCP: Decodable, Sendable {
 
 // MARK: - TronClass API Errors
 
-enum TronClassAPIError: LocalizedError {
+nonisolated enum TronClassAPIError: LocalizedError {
     case sessionExpired
     case unauthorized
     case invalidResponse

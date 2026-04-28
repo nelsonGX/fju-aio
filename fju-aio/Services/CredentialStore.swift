@@ -1,12 +1,12 @@
 import Foundation
 
-struct LDAPCredentials: Codable, Sendable {
+nonisolated struct LDAPCredentials: Codable, Sendable {
     let username: String
     let password: String
 }
 
 final class CredentialStore: Sendable {
-    nonisolated(unsafe) static let shared = CredentialStore()
+    nonisolated static let shared = CredentialStore()
     
     private let keychain = KeychainManager.shared
     private let credentialsKey = "com.fju.ldap.credentials"

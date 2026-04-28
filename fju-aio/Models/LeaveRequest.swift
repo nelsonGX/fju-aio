@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - App-level leave model (used by UI)
 
-struct LeaveRequest: Identifiable, Sendable {
+nonisolated struct LeaveRequest: Identifiable, Sendable {
     let id: String              // leaveApplySn as string
     let leaveApplySn: Int
     let applyNo: String
@@ -37,7 +37,7 @@ struct LeaveRequest: Identifiable, Sendable {
 // MARK: - Leave subtype from GET /RefList/RefLeave
 // Actual API shape: {"refLeaveSn":2,"leaveCna":"事假","activeFlag":1,...}
 
-struct LeaveKind: Identifiable, Codable, Sendable, Hashable {
+nonisolated struct LeaveKind: Identifiable, Codable, Sendable, Hashable {
     let refLeaveSn: Int
     let leaveCna: String        // e.g. "事假", "病假"
     let activeFlag: Int?
@@ -61,7 +61,7 @@ struct LeaveKind: Identifiable, Codable, Sendable, Hashable {
 // MARK: - Leave category from GET /RefList/LeaveKind (top-level: 一般/考試)
 // Actual API shape: {"leaveKind":1,"leaveKindCna":"一般請假",...}
 
-struct LeaveCategory: Identifiable, Codable, Sendable, Hashable {
+nonisolated struct LeaveCategory: Identifiable, Codable, Sendable, Hashable {
     let leaveKind: Int
     let leaveKindCna: String
 
@@ -72,7 +72,7 @@ struct LeaveCategory: Identifiable, Codable, Sendable, Hashable {
 
 // MARK: - Course section from GET /Course/Section
 
-struct CourseSection: Identifiable, Codable, Sendable, Hashable {
+nonisolated struct CourseSection: Identifiable, Codable, Sendable, Hashable {
     let sectNo: Int             // 1–9 numeric key
     let sectNa: String          // e.g. "D5"
     let beginTime: String       // e.g. "13:40"
@@ -82,14 +82,14 @@ struct CourseSection: Identifiable, Codable, Sendable, Hashable {
     var displayLabel: String { "\(sectNa) \(beginTime)–\(endTime)" }
 }
 
-struct CourseSectionListResponse: Codable, Sendable {
+nonisolated struct CourseSectionListResponse: Codable, Sendable {
     let statusCode: Int
     let result: [CourseSectionRaw]
     let message: AnyCodable?
     let errorMessage: AnyCodable?
 }
 
-struct CourseSectionRaw: Codable, Sendable {
+nonisolated struct CourseSectionRaw: Codable, Sendable {
     let sectNo: Int
     let sectionCna: String          // e.g. "D5"
     let sectionStartTime: String?   // e.g. "13:40"
@@ -104,7 +104,7 @@ struct CourseSectionRaw: Codable, Sendable {
 // MARK: - Family type/level from RefList/FamType, RefList/FamLevel
 // Using flexible decoding to handle various possible field name shapes
 
-struct FamTypeItem: Identifiable, Codable, Sendable, Hashable {
+nonisolated struct FamTypeItem: Identifiable, Codable, Sendable, Hashable {
     let value: Int
     let label: String
     var id: Int { value }
@@ -130,7 +130,7 @@ struct FamTypeItem: Identifiable, Codable, Sendable, Hashable {
     }
 }
 
-struct FamLevelItem: Identifiable, Codable, Sendable, Hashable {
+nonisolated struct FamLevelItem: Identifiable, Codable, Sendable, Hashable {
     let value: Int
     let label: String
     var id: Int { value }
@@ -156,7 +156,7 @@ struct FamLevelItem: Identifiable, Codable, Sendable, Hashable {
 }
 
 /// Generic CodingKey for dynamic key lookup
-struct AnyCodingKey: CodingKey {
+nonisolated struct AnyCodingKey: CodingKey {
     let stringValue: String
     var intValue: Int? { nil }
     init(_ string: String) { stringValue = string }
@@ -164,14 +164,14 @@ struct AnyCodingKey: CodingKey {
     init?(intValue: Int) { return nil }
 }
 
-struct FamTypeListResponse: Codable, Sendable {
+nonisolated struct FamTypeListResponse: Codable, Sendable {
     let statusCode: Int
     let result: [FamTypeItem]
     let message: AnyCodable?
     let errorMessage: AnyCodable?
 }
 
-struct FamLevelListResponse: Codable, Sendable {
+nonisolated struct FamLevelListResponse: Codable, Sendable {
     let statusCode: Int
     let result: [FamLevelItem]
     let message: AnyCodable?
@@ -180,21 +180,21 @@ struct FamLevelListResponse: Codable, Sendable {
 
 // MARK: - Student contact pre-fill from GET /Student/Contact
 
-struct StudentContactResponse: Codable, Sendable {
+nonisolated struct StudentContactResponse: Codable, Sendable {
     let statusCode: Int
     let result: StudentContact?
     let message: AnyCodable?
     let errorMessage: AnyCodable?
 }
 
-struct StudentContact: Codable, Sendable {
+nonisolated struct StudentContact: Codable, Sendable {
     let phoneNumber: String?
     let emailAccount: String?
 }
 
 // MARK: - Full leave record from GET /StuLeave/{sn}
 
-struct LeaveRecordDetailResponse: Codable, Sendable {
+nonisolated struct LeaveRecordDetailResponse: Codable, Sendable {
     let statusCode: Int
     let result: LeaveRecord?
     let message: AnyCodable?
@@ -203,7 +203,7 @@ struct LeaveRecordDetailResponse: Codable, Sendable {
 
 // MARK: - Course list from GET /StuLeave/{sn}/SelCou
 
-struct LeaveSelCouListResponse: Codable, Sendable {
+nonisolated struct LeaveSelCouListResponse: Codable, Sendable {
     let statusCode: Int
     let result: [LeaveSelCouCourse]
     let message: AnyCodable?
@@ -211,7 +211,7 @@ struct LeaveSelCouListResponse: Codable, Sendable {
 }
 
 /// One course entry returned by GET /StuLeave/{sn}/SelCou
-struct LeaveSelCouCourse: Codable, Sendable, Identifiable {
+nonisolated struct LeaveSelCouCourse: Codable, Sendable, Identifiable {
     let jonCouSn: Int
     let avaCouSn: Int
     let couCNa: String          // Course name
@@ -225,7 +225,7 @@ struct LeaveSelCouCourse: Codable, Sendable, Identifiable {
     var id: Int { jonCouSn }
 }
 
-struct LeaveSelCouDate: Codable, Sendable, Identifiable {
+nonisolated struct LeaveSelCouDate: Codable, Sendable, Identifiable {
     let couDate: String         // ISO8601 date string
     let sectNo: Int
     var isSelected: Bool = true
@@ -235,7 +235,7 @@ struct LeaveSelCouDate: Codable, Sendable, Identifiable {
 
 // MARK: - Wizard state shared across steps
 
-struct LeaveWizardDraft: Sendable {
+nonisolated struct LeaveWizardDraft: Sendable {
     // Step 1
     var leaveKind: Int = 1           // 1=一般請假, 2=考試請假
 
@@ -264,7 +264,7 @@ struct LeaveWizardDraft: Sendable {
 // MARK: - POST /StuLeave/{sn}/SelCou payload
 // Server requires one entry per course (not per period), with seqTims and couDates arrays.
 
-struct SelCouPostEntry: Codable, Sendable {
+nonisolated struct SelCouPostEntry: Codable, Sendable {
     let jonCouSn: Int
     let avaCouSn: Int
     let stuNo: String
@@ -273,7 +273,7 @@ struct SelCouPostEntry: Codable, Sendable {
     let couDates: [String]      // plain date strings e.g. "2026-04-29T00:00:00"
 }
 
-struct SelCouSeqTim: Codable, Sendable {
+nonisolated struct SelCouSeqTim: Codable, Sendable {
     let section: String         // e.g. "D5"
     let leaveSeqTimSn: Int      // 0 for new
     let leaveApplySn: Int
@@ -287,7 +287,7 @@ struct SelCouSeqTim: Codable, Sendable {
 
 // MARK: - Leave stat from StuLeave/Stat
 
-struct LeaveStat: Sendable {
+nonisolated struct LeaveStat: Sendable {
     let leaveName: String
     let totalSections: Int
     let totalDays: Int
@@ -295,21 +295,21 @@ struct LeaveStat: Sendable {
 
 // MARK: - API response wrappers
 
-struct LeaveKindListResponse: Codable, Sendable {
+nonisolated struct LeaveKindListResponse: Codable, Sendable {
     let statusCode: Int
     let result: [LeaveKind]
     let message: AnyCodable?
     let errorMessage: AnyCodable?
 }
 
-struct LeaveCategoryListResponse: Codable, Sendable {
+nonisolated struct LeaveCategoryListResponse: Codable, Sendable {
     let statusCode: Int
     let result: [LeaveCategory]
     let message: AnyCodable?
     let errorMessage: AnyCodable?
 }
 
-struct LeaveApplyAPIResponse: Codable, Sendable {
+nonisolated struct LeaveApplyAPIResponse: Codable, Sendable {
     let statusCode: Int
     let result: Int?            // the new leaveApplySn (null on error)
     let message: LeaveMessage?
@@ -329,7 +329,7 @@ struct LeaveApplyAPIResponse: Codable, Sendable {
     nonisolated var errorMessages: [LeaveErrorField]? { errorMessage }
 }
 
-struct LeaveSelCouResponse: Codable, Sendable {
+nonisolated struct LeaveSelCouResponse: Codable, Sendable {
     let statusCode: Int
     let result: Bool
     let message: LeaveSelCouMessage?
@@ -342,14 +342,14 @@ struct LeaveSelCouResponse: Codable, Sendable {
     nonisolated var success: Bool { statusCode == 200 && result }
 }
 
-struct LeaveStatResponse: Codable, Sendable {
+nonisolated struct LeaveStatResponse: Codable, Sendable {
     let statusCode: Int
     let result: LeaveStatSummary
     let message: AnyCodable?
     let errorMessage: AnyCodable?
 }
 
-struct LeaveStatSummary: Codable, Sendable {
+nonisolated struct LeaveStatSummary: Codable, Sendable {
     let stuNo: String
     let sumLeaveSect: Int
     let sumLeaveSectYes: Int
@@ -357,7 +357,7 @@ struct LeaveStatSummary: Codable, Sendable {
     let statLeaveCouList: [LeaveStatRecord]
 }
 
-struct LeaveStatRecord: Codable, Sendable, Identifiable {
+nonisolated struct LeaveStatRecord: Codable, Sendable, Identifiable {
     let stuNo: String
     let cntLeaveSect: Int
     let cntLeaveSectYes: Int
@@ -380,7 +380,7 @@ struct LeaveStatRecord: Codable, Sendable, Identifiable {
     var courseCode: String { javaNo ?? avaNo ?? "" }
 }
 
-struct LeaveStatSeqTim: Codable, Sendable, Identifiable {
+nonisolated struct LeaveStatSeqTim: Codable, Sendable, Identifiable {
     let seqTimSn: Int
     let couWekCna: String?
     let section: String
@@ -395,7 +395,7 @@ struct LeaveStatSeqTim: Codable, Sendable, Identifiable {
     }
 }
 
-struct LeaveStatLeaveSeqTim: Codable, Sendable, Identifiable {
+nonisolated struct LeaveStatLeaveSeqTim: Codable, Sendable, Identifiable {
     let section: String
     let couDate: String?
     let sectNo: Int
@@ -404,7 +404,7 @@ struct LeaveStatLeaveSeqTim: Codable, Sendable, Identifiable {
     var displayDate: String? { couDate.map { String($0.prefix(10)) } }
 }
 
-struct LeaveApplyDeadlineResponse: Codable, Sendable {
+nonisolated struct LeaveApplyDeadlineResponse: Codable, Sendable {
     let statusCode: Int
     let result: String?         // deadline date string
     let message: AnyCodable?
@@ -412,7 +412,7 @@ struct LeaveApplyDeadlineResponse: Codable, Sendable {
 }
 
 // API shape: {"statusCode":200,"result":[114,113],...}
-struct HyListResponse: Codable, Sendable {
+nonisolated struct HyListResponse: Codable, Sendable {
     let statusCode: Int
     let result: [Int]
     let message: AnyCodable?
@@ -421,7 +421,7 @@ struct HyListResponse: Codable, Sendable {
     nonisolated var records: [HyRecord] { result.map { HyRecord(hy: $0) } }
 }
 
-struct HyRecord: Sendable, Identifiable, Hashable {
+nonisolated struct HyRecord: Sendable, Identifiable, Hashable {
     let hy: Int
 
     var id: Int { hy }

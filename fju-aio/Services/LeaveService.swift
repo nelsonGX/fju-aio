@@ -5,7 +5,7 @@ import os.log
 /// Base URL: https://exploreLink.fju.edu.tw/stuLeave/api
 /// Auth: Bearer token from SISAuthService (same JWT used by SISService).
 actor LeaveService {
-    static let shared = LeaveService()
+    nonisolated static let shared = LeaveService()
 
     private let baseURL = "https://exploreLink.fju.edu.tw/stuLeave/api"
     private let authService = SISAuthService.shared
@@ -530,4 +530,3 @@ actor LeaveService {
         }
     }
 }
-

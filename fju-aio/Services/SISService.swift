@@ -2,7 +2,7 @@ import Foundation
 import os.log
 
 actor SISService {
-    static let shared = SISService()
+    nonisolated static let shared = SISService()
     
     private let baseURL = "https://travellerlink.fju.edu.tw"
     private let authService = SISAuthService.shared
@@ -253,7 +253,7 @@ actor SISService {
     
     func getCourseSchedule(academicYear: String, semester: Int) async throws -> CourseScheduleResponse {
         logger.info("📅 Fetching course schedule for \(academicYear, privacy: .public)-\(semester, privacy: .public)...")
-        let session = try await authService.getValidSession()
+        _ = try await authService.getValidSession()
         
         // Note: The docs don't show a course schedule endpoint
         // This might need to be obtained from a different source or endpoint
