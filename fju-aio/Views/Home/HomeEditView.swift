@@ -3,11 +3,12 @@ import SwiftUI
 struct HomeEditView: View {
     @Environment(HomePreferences.self) private var preferences
     @Environment(\.dismiss) private var dismiss
+    @AppStorage(ModuleRegistry.checkInFeatureEnabledKey) private var checkInEnabled = false
 
     var body: some View {
         NavigationStack {
             List {
-                ForEach(ModuleRegistry.groupedByCategory, id: \.0) { category, modules in
+                ForEach(ModuleRegistry.groupedByCategory(checkInEnabled: checkInEnabled), id: \.0) { category, modules in
                     Section(category.rawValue) {
                         ForEach(modules) { module in
                             Button {
