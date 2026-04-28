@@ -212,7 +212,9 @@ final class FJUService: FJUServiceProtocol, @unchecked Sendable {
             courseName: "\(record.courseName) [mock]",
             date: record.date,
             period: record.period,
-            status: record.status
+            status: record.status,
+            rollcallTitle: record.rollcallTitle,
+            source: record.source
         )
     }
     

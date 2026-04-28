@@ -96,51 +96,50 @@ final class RealFJUService: FJUServiceProtocol, @unchecked Sendable {
     }
     
     // MARK: - Attendance
-    
+
     func fetchAttendanceRecords(semester: String) async throws -> [AttendanceRecord] {
-        logger.info("📊 Fetching attendance records for semester: \(semester)")
+        logger.info("📊 Fetching attendance records via TronClass rollcall API")
 
-        let parts = semester.split(separator: "-")
-        guard parts.count == 2,
-              let academicYear = Int(String(parts.first ?? "")),
-              let semesterNum = Int(String(parts.last ?? "")) else {
-            throw SISError.badRequest("Invalid semester format")
+        let session = try await TronClassAuthService.shared.getValidSession()
+        let userId = session.userId
+
+        let todos = try await TronClassAPIService.shared.getTodos()
+        var seen = Set<Int>()
+        let courses = todos.compactMap { todo -> (id: Int, name: String)? in
+            guard seen.insert(todo.course_id).inserted else { return nil }
+            return (todo.course_id, todo.course_name)
         }
 
-        let leaveService = LeaveService.shared
-        let records = try await leaveService.fetchLeaveRecords(
-            academicYear: academicYear,
-            semester: semesterNum,
-            pageNumber: 1,
-            pageSize: 100
-        )
+        guard !courses.isEmpty else { return [] }
 
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
-        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
-        dateFormatter.timeZone = TimeZone(secondsFromGMT: 0)
+        let rollcallService = RollcallService.shared
+        var records: [AttendanceRecord] = []
 
-        return records.compactMap { record in
-            guard let date = dateFormatter.date(from: record.beginDate) else {
-                logger.warning("⚠️ Failed to parse date for attendance record: \(record.id) - beginDate: \(record.beginDate)")
-                return nil
-            }
-
-            let status: AttendanceRecord.AttendanceStatus = {
-                switch record.applyStatus {
-                case 9, 1: return .excused
-                default: return .present
+        await withTaskGroup(of: [AttendanceRecord].self) { group in
+            for course in courses {
+                group.addTask {
+                    guard let rollcalls = try? await rollcallService.fetchAttendanceRollcalls(
+                        courseId: course.id, userId: userId
+                    ) else { return [] }
+                    return rollcalls.compactMap { r -> AttendanceRecord? in
+                        guard let date = r.rollcallDate else { return nil }
+                        return AttendanceRecord(
+                            id: "\(r.student_rollcall_id)",
+                            courseName: course.name,
+                            date: date,
+                            period: 0,
+                            status: r.attendanceStatus,
+                            rollcallTitle: r.title,
+                            source: r.source
+                        )
+                    }
                 }
-            }()
-
-            return AttendanceRecord(
-                id: "\(record.leaveApplySn)",
-                courseName: "課程名稱",
-                date: date,
-                period: record.beginSectNo,
-                status: status
-            )
+            }
+            for await batch in group { records.append(contentsOf: batch) }
         }
+
+        logger.info("✅ Fetched \(records.count) attendance records total")
+        return records
     }
     
     // MARK: - Calendar

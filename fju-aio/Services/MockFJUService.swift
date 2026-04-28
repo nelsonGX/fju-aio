@@ -97,18 +97,18 @@ final class MockFJUService: FJUServiceProtocol, @unchecked Sendable {
         let calendar = Calendar.current
         let now = Date()
         return [
-            AttendanceRecord(id: "a1", courseName: "資料結構", date: calendar.date(byAdding: .day, value: -1, to: now)!, period: 3, status: .present),
-            AttendanceRecord(id: "a2", courseName: "資料結構", date: calendar.date(byAdding: .day, value: -1, to: now)!, period: 4, status: .present),
-            AttendanceRecord(id: "a3", courseName: "計算機組織", date: calendar.date(byAdding: .day, value: -2, to: now)!, period: 5, status: .present),
-            AttendanceRecord(id: "a4", courseName: "計算機組織", date: calendar.date(byAdding: .day, value: -2, to: now)!, period: 6, status: .late),
-            AttendanceRecord(id: "a5", courseName: "線性代數", date: calendar.date(byAdding: .day, value: -3, to: now)!, period: 1, status: .absent),
-            AttendanceRecord(id: "a6", courseName: "線性代數", date: calendar.date(byAdding: .day, value: -3, to: now)!, period: 2, status: .absent),
-            AttendanceRecord(id: "a7", courseName: "作業系統", date: calendar.date(byAdding: .day, value: -5, to: now)!, period: 6, status: .present),
-            AttendanceRecord(id: "a8", courseName: "大學國文", date: calendar.date(byAdding: .day, value: -4, to: now)!, period: 3, status: .excused),
-            AttendanceRecord(id: "a9", courseName: "演算法", date: calendar.date(byAdding: .day, value: -2, to: now)!, period: 3, status: .present),
-            AttendanceRecord(id: "a10", courseName: "演算法", date: calendar.date(byAdding: .day, value: -2, to: now)!, period: 4, status: .present),
-            AttendanceRecord(id: "a11", courseName: "資料結構", date: calendar.date(byAdding: .day, value: -8, to: now)!, period: 3, status: .present),
-            AttendanceRecord(id: "a12", courseName: "資料結構", date: calendar.date(byAdding: .day, value: -8, to: now)!, period: 4, status: .present),
+            AttendanceRecord(id: "a1", courseName: "資料結構", date: calendar.date(byAdding: .day, value: -1, to: now)!, period: 3, status: .present, rollcallTitle: "2026.04.27 10:10", source: "qr"),
+            AttendanceRecord(id: "a2", courseName: "資料結構", date: calendar.date(byAdding: .day, value: -1, to: now)!, period: 4, status: .present, rollcallTitle: "2026.04.27 11:10", source: "qr"),
+            AttendanceRecord(id: "a3", courseName: "計算機組織", date: calendar.date(byAdding: .day, value: -2, to: now)!, period: 5, status: .present, rollcallTitle: "2026.04.26 12:10", source: "radar"),
+            AttendanceRecord(id: "a4", courseName: "計算機組織", date: calendar.date(byAdding: .day, value: -2, to: now)!, period: 6, status: .late, rollcallTitle: "2026.04.26 13:40", source: "radar"),
+            AttendanceRecord(id: "a5", courseName: "線性代數", date: calendar.date(byAdding: .day, value: -3, to: now)!, period: 1, status: .absent, rollcallTitle: "2026.04.25 08:10", source: "number"),
+            AttendanceRecord(id: "a6", courseName: "線性代數", date: calendar.date(byAdding: .day, value: -3, to: now)!, period: 2, status: .absent, rollcallTitle: "2026.04.25 09:10", source: "number"),
+            AttendanceRecord(id: "a7", courseName: "作業系統", date: calendar.date(byAdding: .day, value: -5, to: now)!, period: 6, status: .present, rollcallTitle: "2026.04.23 13:40", source: "qr"),
+            AttendanceRecord(id: "a8", courseName: "大學國文", date: calendar.date(byAdding: .day, value: -4, to: now)!, period: 3, status: .excused, rollcallTitle: "2026.04.24 10:10", source: "qr"),
+            AttendanceRecord(id: "a9", courseName: "演算法", date: calendar.date(byAdding: .day, value: -2, to: now)!, period: 3, status: .present, rollcallTitle: "2026.04.26 10:10", source: "qr"),
+            AttendanceRecord(id: "a10", courseName: "演算法", date: calendar.date(byAdding: .day, value: -2, to: now)!, period: 4, status: .present, rollcallTitle: "2026.04.26 11:10", source: "qr"),
+            AttendanceRecord(id: "a11", courseName: "資料結構", date: calendar.date(byAdding: .day, value: -8, to: now)!, period: 3, status: .present, rollcallTitle: "2026.04.20 10:10", source: "qr"),
+            AttendanceRecord(id: "a12", courseName: "資料結構", date: calendar.date(byAdding: .day, value: -8, to: now)!, period: 4, status: .present, rollcallTitle: "2026.04.20 11:10", source: "qr"),
         ]
     }
 

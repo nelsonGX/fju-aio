@@ -6,6 +6,8 @@ struct AttendanceRecord: Identifiable {
     let date: Date
     let period: Int
     let status: AttendanceStatus
+    let rollcallTitle: String
+    let source: String  // "qr", "radar", "number"
 
     enum AttendanceStatus: String, CaseIterable {
         case present = "出席"

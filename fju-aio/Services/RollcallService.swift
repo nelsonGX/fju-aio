@@ -11,6 +11,25 @@ actor RollcallService {
 
     private init() {}
 
+    // MARK: - Fetch Attendance History
+
+    func fetchAttendanceRollcalls(courseId: Int, userId: Int) async throws -> [AttendanceRollcall] {
+        let session = try await authService.getValidSession()
+
+        let url = URL(string: "\(baseURL)/api/course/\(courseId)/student/\(userId)/rollcalls")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        Self.applyHeaders(&request, sessionId: session.sessionId)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw RollcallError.sessionExpired }
+        if http.statusCode == 401 || http.statusCode == 403 { throw RollcallError.sessionExpired }
+
+        let decoded = try JSONDecoder().decode(AttendanceRollcallsResponse.self, from: data)
+        logger.info("✅ Fetched \(decoded.rollcalls.count) attendance rollcalls for course \(courseId)")
+        return decoded.rollcalls
+    }
+
     // MARK: - Fetch Rollcalls
 
     func fetchActiveRollcalls() async throws -> [Rollcall] {
