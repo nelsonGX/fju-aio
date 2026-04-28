@@ -34,17 +34,255 @@ struct LeaveRequest: Identifiable, Sendable {
     enum StatusColor { case approved, pending, rejected, draft }
 }
 
-// MARK: - Leave kind from RefList/LeaveKind
-// API shape: {"value": 2, "label": "事假", "lcId": 0}
+// MARK: - Leave subtype from GET /RefList/RefLeave
+// Actual API shape: {"refLeaveSn":2,"leaveCna":"事假","activeFlag":1,...}
 
 struct LeaveKind: Identifiable, Codable, Sendable, Hashable {
-    let value: Int              // refLeaveSn
-    let label: String           // e.g. "事假", "病假"
-    let lcId: Int
+    let refLeaveSn: Int
+    let leaveCna: String        // e.g. "事假", "病假"
+    let activeFlag: Int?
+    let genderKind: Int?        // 0=不分, 1=男, 2=女
+    let isReqFamType: Bool?
+    let isReqFamLevel: Bool?
 
+    var id: Int { refLeaveSn }
+    var value: Int { refLeaveSn }
+    var label: String { leaveCna }
+    var leaveNa: String { leaveCna }
+
+    /// True when this subtype requires 親屬 family fields (e.g. 喪假)
+    var requiresFamilyFields: Bool { isReqFamType == true || isReqFamLevel == true }
+    /// True when only available to female students
+    var femaleOnly: Bool { genderKind == 2 }
+    /// True when only available to male students
+    var maleOnly: Bool { genderKind == 1 }
+}
+
+// MARK: - Leave category from GET /RefList/LeaveKind (top-level: 一般/考試)
+// Actual API shape: {"leaveKind":1,"leaveKindCna":"一般請假",...}
+
+struct LeaveCategory: Identifiable, Codable, Sendable, Hashable {
+    let leaveKind: Int
+    let leaveKindCna: String
+
+    var id: Int { leaveKind }
+    var value: Int { leaveKind }
+    var label: String { leaveKindCna }
+}
+
+// MARK: - Course section from GET /Course/Section
+
+struct CourseSection: Identifiable, Codable, Sendable, Hashable {
+    let sectNo: Int             // 1–9 numeric key
+    let sectNa: String          // e.g. "D5"
+    let beginTime: String       // e.g. "13:40"
+    let endTime: String         // e.g. "14:30"
+
+    var id: Int { sectNo }
+    var displayLabel: String { "\(sectNa) \(beginTime)–\(endTime)" }
+}
+
+struct CourseSectionListResponse: Codable, Sendable {
+    let statusCode: Int
+    let result: [CourseSectionRaw]
+    let message: AnyCodable?
+    let errorMessage: AnyCodable?
+}
+
+struct CourseSectionRaw: Codable, Sendable {
+    let sectNo: Int
+    let sectionCna: String          // e.g. "D5"
+    let sectionStartTime: String?   // e.g. "13:40"
+    let sectionEndTime: String?     // e.g. "14:30"
+
+    var resolvedSectNo: Int { sectNo }
+    var resolvedSectNa: String { sectionCna }
+    var resolvedBeginTime: String { sectionStartTime ?? "" }
+    var resolvedEndTime: String { sectionEndTime ?? "" }
+}
+
+// MARK: - Family type/level from RefList/FamType, RefList/FamLevel
+// Using flexible decoding to handle various possible field name shapes
+
+struct FamTypeItem: Identifiable, Codable, Sendable, Hashable {
+    let value: Int
+    let label: String
     var id: Int { value }
-    var refLeaveSn: Int { value }
-    var leaveNa: String { label }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: AnyCodingKey.self)
+        // Try known field name variations
+        if let v = try? c.decode(Int.self, forKey: AnyCodingKey("famTypeNo")) {
+            value = v
+            label = (try? c.decode(String.self, forKey: AnyCodingKey("famTypeCna"))) ?? ""
+        } else if let v = try? c.decode(Int.self, forKey: AnyCodingKey("value")) {
+            value = v
+            label = (try? c.decode(String.self, forKey: AnyCodingKey("label"))) ?? ""
+        } else {
+            throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "FamTypeItem: no recognised key"))
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: AnyCodingKey.self)
+        try c.encode(value, forKey: AnyCodingKey("value"))
+        try c.encode(label, forKey: AnyCodingKey("label"))
+    }
+}
+
+struct FamLevelItem: Identifiable, Codable, Sendable, Hashable {
+    let value: Int
+    let label: String
+    var id: Int { value }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: AnyCodingKey.self)
+        if let v = try? c.decode(Int.self, forKey: AnyCodingKey("famLevelNo")) {
+            value = v
+            label = (try? c.decode(String.self, forKey: AnyCodingKey("famLevelCna"))) ?? ""
+        } else if let v = try? c.decode(Int.self, forKey: AnyCodingKey("value")) {
+            value = v
+            label = (try? c.decode(String.self, forKey: AnyCodingKey("label"))) ?? ""
+        } else {
+            throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "FamLevelItem: no recognised key"))
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: AnyCodingKey.self)
+        try c.encode(value, forKey: AnyCodingKey("value"))
+        try c.encode(label, forKey: AnyCodingKey("label"))
+    }
+}
+
+/// Generic CodingKey for dynamic key lookup
+struct AnyCodingKey: CodingKey {
+    let stringValue: String
+    var intValue: Int? { nil }
+    init(_ string: String) { stringValue = string }
+    init?(stringValue: String) { self.stringValue = stringValue }
+    init?(intValue: Int) { return nil }
+}
+
+struct FamTypeListResponse: Codable, Sendable {
+    let statusCode: Int
+    let result: [FamTypeItem]
+    let message: AnyCodable?
+    let errorMessage: AnyCodable?
+}
+
+struct FamLevelListResponse: Codable, Sendable {
+    let statusCode: Int
+    let result: [FamLevelItem]
+    let message: AnyCodable?
+    let errorMessage: AnyCodable?
+}
+
+// MARK: - Student contact pre-fill from GET /Student/Contact
+
+struct StudentContactResponse: Codable, Sendable {
+    let statusCode: Int
+    let result: StudentContact?
+    let message: AnyCodable?
+    let errorMessage: AnyCodable?
+}
+
+struct StudentContact: Codable, Sendable {
+    let phoneNumber: String?
+    let emailAccount: String?
+}
+
+// MARK: - Full leave record from GET /StuLeave/{sn}
+
+struct LeaveRecordDetailResponse: Codable, Sendable {
+    let statusCode: Int
+    let result: LeaveRecord?
+    let message: AnyCodable?
+    let errorMessage: AnyCodable?
+}
+
+// MARK: - Course list from GET /StuLeave/{sn}/SelCou
+
+struct LeaveSelCouListResponse: Codable, Sendable {
+    let statusCode: Int
+    let result: [LeaveSelCouCourse]
+    let message: AnyCodable?
+    let errorMessage: AnyCodable?
+}
+
+/// One course entry returned by GET /StuLeave/{sn}/SelCou
+struct LeaveSelCouCourse: Codable, Sendable, Identifiable {
+    let jonCouSn: Int
+    let avaCouSn: Int
+    let couCNa: String          // Course name
+    let couNo: String           // Course code
+    let tchCNa: String?         // Teacher name
+    let dptGrdNa: String?       // e.g. "(日)資管二甲"
+    let couWek: String          // Day of week "1"–"7"
+    let sectNos: [Int]          // Period numbers this course occupies
+    let leaveDates: [LeaveSelCouDate]  // Dates that overlap the leave
+
+    var id: Int { jonCouSn }
+}
+
+struct LeaveSelCouDate: Codable, Sendable, Identifiable {
+    let couDate: String         // ISO8601 date string
+    let sectNo: Int
+    var isSelected: Bool = true
+
+    var id: String { "\(couDate)-\(sectNo)" }
+}
+
+// MARK: - Wizard state shared across steps
+
+struct LeaveWizardDraft: Sendable {
+    // Step 1
+    var leaveKind: Int = 1           // 1=一般請假, 2=考試請假
+
+    // Step 2
+    var hy: Int = 114
+    var ht: Int = 2
+    var refLeaveSn: Int = 2          // Default: 事假
+    var beginDate: String = ""
+    var endDate: String = ""
+    var beginSectNo: Int = 1
+    var endSectNo: Int = 9
+    var leaveReason: String = ""
+    var phoneNumber: String = ""
+    var emailAccount: String = ""
+    var famTypeNo: Int? = nil
+    var famLevelNo: Int? = nil
+    var proofFileData: Data? = nil
+    var proofFileExt: String = "pdf"
+    var proofFileName: String = ""
+
+    // Created by Step 2 → Step 3 transition
+    var leaveApplySn: Int = 0
+    var applyNo: String = ""
+}
+
+// MARK: - POST /StuLeave/{sn}/SelCou payload
+// Server requires one entry per course (not per period), with seqTims and couDates arrays.
+
+struct SelCouPostEntry: Codable, Sendable {
+    let jonCouSn: Int
+    let avaCouSn: Int
+    let stuNo: String
+    let couWek: String
+    let seqTims: [SelCouSeqTim]
+    let couDates: [String]      // plain date strings e.g. "2026-04-29T00:00:00"
+}
+
+struct SelCouSeqTim: Codable, Sendable {
+    let section: String         // e.g. "D5"
+    let leaveSeqTimSn: Int      // 0 for new
+    let leaveApplySn: Int
+    let jonCouSn: Int
+    let avaCouSn: Int
+    let stuNo: String?
+    let couDate: String         // "2026-04-29T00:00:00"
+    let couWek: String
+    let sectNo: Int
 }
 
 // MARK: - Leave stat from StuLeave/Stat
@@ -60,6 +298,13 @@ struct LeaveStat: Sendable {
 struct LeaveKindListResponse: Codable, Sendable {
     let statusCode: Int
     let result: [LeaveKind]
+    let message: AnyCodable?
+    let errorMessage: AnyCodable?
+}
+
+struct LeaveCategoryListResponse: Codable, Sendable {
+    let statusCode: Int
+    let result: [LeaveCategory]
     let message: AnyCodable?
     let errorMessage: AnyCodable?
 }
