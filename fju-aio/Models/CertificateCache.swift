@@ -43,6 +43,19 @@ struct CertificateCache {
         }
     }
 
+    func removeAll() {
+        try? FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
+        guard let contents = try? FileManager.default.contentsOfDirectory(
+            at: cacheDirectory,
+            includingPropertiesForKeys: nil,
+            options: .skipsHiddenFiles
+        ) else { return }
+
+        for url in contents {
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
+
     // MARK: - List All Cached Items
 
     /// Returns metadata for every cached certificate, sorted newest first.
