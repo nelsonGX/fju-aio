@@ -16,7 +16,7 @@ actor LeaveService {
 
     // MARK: - Reference Data
 
-    /// GET /RefList/LeaveKind — top-level leave categories (一般/考試)
+    /// GET /RefList/LeaveKind — top-level leave categories (一般請假, 考試請假)
     func fetchLeaveKinds() async throws -> [LeaveKind] {
         logger.info("📋 Fetching leave kinds")
         let request = try await makeRequest("GET", path: "/RefList/LeaveKind")
@@ -35,6 +35,36 @@ actor LeaveService {
         try handleHTTPError(response)
         logRawJSON(data, label: "RefList/RefLeave")
         let decoded = try decodeLogged(LeaveKindListResponse.self, from: data, label: "LeaveKindListResponse")
+        return decoded.result
+    }
+
+    /// GET /RefList/RefExam — exam leave category options.
+    func fetchExamKinds() async throws -> [LeaveKind] {
+        logger.info("📋 Fetching exam kinds")
+        let request = try await makeRequest("GET", path: "/RefList/RefExam")
+        let (data, response) = try await networkService.performRequest(request)
+        try handleHTTPError(response)
+        let decoded = try JSONDecoder().decode(LeaveKindListResponse.self, from: data)
+        return decoded.result
+    }
+
+    /// GET /RefList/RefLeave — concrete leave types (事假, 病假, etc.)
+    func fetchRefLeaves() async throws -> [RefLeave] {
+        logger.info("📋 Fetching ref leaves")
+        let request = try await makeRequest("GET", path: "/RefList/RefLeave")
+        let (data, response) = try await networkService.performRequest(request)
+        try handleHTTPError(response)
+        let decoded = try JSONDecoder().decode(RefLeaveListResponse.self, from: data)
+        return decoded.result
+    }
+
+    /// GET /Course/Section — class section definitions and times.
+    func fetchSections() async throws -> [LeaveSection] {
+        logger.info("📋 Fetching leave sections")
+        let request = try await makeRequest("GET", path: "/Course/Section")
+        let (data, response) = try await networkService.performRequest(request)
+        try handleHTTPError(response)
+        let decoded = try JSONDecoder().decode(LeaveSectionListResponse.self, from: data)
         return decoded.result
     }
 
@@ -311,7 +341,7 @@ actor LeaveService {
     }
 
     /// GET /StuLeave/Stat — leave statistics for a semester
-    func fetchLeaveStat(academicYear: Int, semester: Int) async throws -> LeaveStatSummary {
+    func fetchLeaveStat(academicYear: Int, semester: Int) async throws -> LeaveStatResult {
         logger.info("📊 Fetching leave stat hy=\(academicYear) ht=\(semester)")
         let session = try await authService.getValidSession()
 
@@ -336,16 +366,37 @@ actor LeaveService {
         return decoded.result
     }
 
+    /// GET /StuLeave/{leaveApplySn} — full leave detail for editing or viewing.
+    func fetchLeaveDetail(leaveApplySn: Int) async throws -> LeaveDetail {
+        logger.info("📋 Fetching leave detail \(leaveApplySn)")
+        let request = try await makeRequest("GET", path: "/StuLeave/\(leaveApplySn)")
+        let (data, response) = try await networkService.performRequest(request)
+        try handleHTTPError(response)
+        let decoded = try JSONDecoder().decode(LeaveDetailResponse.self, from: data)
+        return decoded.result
+    }
+
+    /// GET /LeaveApplyDoc/{leaveApplyDocSn} — download an uploaded proof file.
+    func downloadLeaveApplyDoc(leaveApplyDocSn: Int) async throws -> (data: Data, filename: String) {
+        logger.info("📎 Downloading leave proof file \(leaveApplyDocSn)")
+        let request = try await makeRequest("GET", path: "/LeaveApplyDoc/\(leaveApplyDocSn)")
+        let (data, response) = try await networkService.performRequest(request)
+        try handleHTTPError(response)
+        return (data, filename(from: response) ?? "leave-proof-\(leaveApplyDocSn)")
+    }
+
     // MARK: - Submit Leave (Step 1)
 
-    /// POST /StuLeave — create a new leave application.
+    /// POST /StuLeave — create or update a leave application.
     /// Returns the new leaveApplySn.
     func submitLeave(
+        leaveApplySn: Int = 0,
         academicYear: Int,
         semester: Int,
         leaveKind: Int,       // 1=一般請假, 20=考試請假
         examKind: Int,        // 0=非考試
         refLeaveSn: Int,
+        officialLeaveSn: Int = 0,
         beginDate: String,
         endDate: String,
         beginSectNo: Int,
@@ -354,7 +405,9 @@ actor LeaveService {
         phoneNumber: String = "",
         emailAccount: String = "",
         proofFileData: Data? = nil,
+        proofFileName: String = "proof.pdf",
         proofFileExt: String = "pdf",
+        proofFileMimeType: String = "application/octet-stream",
         proofRefDocSn: Int = 0
     ) async throws -> Int {
         logger.info("📝 Submitting leave application")
@@ -377,14 +430,14 @@ actor LeaveService {
             body.append("\(value)\r\n".data(using: .utf8)!)
         }
 
-        appendField("leaveApplySn", "0")
+        appendField("leaveApplySn", "\(leaveApplySn)")
         appendField("stuNo", session.empNo)
         appendField("hy", "\(academicYear)")
         appendField("ht", "\(semester)")
         appendField("leaveKind", "\(leaveKind)")
         appendField("examKind", "\(examKind)")
         appendField("refLeaveSn", "\(refLeaveSn)")
-        appendField("officialLeaveSn", "0")
+        appendField("officialLeaveSn", "\(officialLeaveSn)")
         appendField("beginDate", beginDate)
         appendField("endDate", endDate)
         appendField("beginSectNo", "\(beginSectNo)")
@@ -397,8 +450,9 @@ actor LeaveService {
 
         if let fileData = proofFileData {
             body.append("--\(boundary)\r\n".data(using: .utf8)!)
-            body.append("Content-Disposition: form-data; name=\"UploadFiles[0].uploadFile\"; filename=\"proof.\(proofFileExt)\"\r\n".data(using: .utf8)!)
-            body.append("Content-Type: application/octet-stream\r\n\r\n".data(using: .utf8)!)
+            let filename = proofFileName.isEmpty ? "proof.\(proofFileExt)" : proofFileName
+            body.append("Content-Disposition: form-data; name=\"UploadFiles[0].uploadFile\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
+            body.append("Content-Type: \(proofFileMimeType)\r\n\r\n".data(using: .utf8)!)
             body.append(fileData)
             body.append("\r\n".data(using: .utf8)!)
             appendField("UploadFiles[0].refDocSn", "\(proofRefDocSn)")
@@ -508,8 +562,8 @@ actor LeaveService {
     // MARK: - Cancel Leave
 
     /// DELETE /StuLeave/{leaveApplySn}
-    func cancelLeave(leaveApplySn: Int) async throws {
-        logger.info("❌ Cancelling leave \(leaveApplySn)")
+    func deleteLeave(leaveApplySn: Int) async throws {
+        logger.info("❌ Deleting leave \(leaveApplySn)")
         let session = try await authService.getValidSession()
 
         let url = URL(string: "\(baseURL)/StuLeave/\(leaveApplySn)")!
@@ -519,9 +573,15 @@ actor LeaveService {
         request.setValue("zh-TW", forHTTPHeaderField: "Accept-Language")
         request.setValue("Bearer \(session.token)", forHTTPHeaderField: "Authorization")
 
-        let (_, httpResponse) = try await networkService.performRequest(request)
+        let (data, httpResponse) = try await networkService.performRequest(request)
         try handleHTTPError(httpResponse)
-        logger.info("✅ Leave \(leaveApplySn) cancelled")
+
+        let decoded = try JSONDecoder().decode(LeaveBoolResponse.self, from: data)
+        guard decoded.success else {
+            let message = decoded.message?.info ?? "假單刪除失敗 (statusCode=\(decoded.statusCode))"
+            throw SISError.serverError(message)
+        }
+        logger.info("✅ Leave \(leaveApplySn) deleted")
     }
 
     // MARK: - Helpers
@@ -576,5 +636,30 @@ actor LeaveService {
         case 500...599: throw SISError.serverError("伺服器錯誤")
         default: throw SISError.invalidResponse
         }
+    }
+
+    private func filename(from response: HTTPURLResponse) -> String? {
+        guard let disposition = response.value(forHTTPHeaderField: "Content-Disposition") else {
+            return nil
+        }
+
+        if let encodedRange = disposition.range(of: "filename*=utf-8''") {
+            let raw = String(disposition[encodedRange.upperBound...])
+                .split(separator: ";", maxSplits: 1)
+                .first
+                .map(String.init)?
+                .trimmingCharacters(in: CharacterSet(charactersIn: "\" "))
+            if let raw, let decoded = raw.removingPercentEncoding, !decoded.isEmpty {
+                return decoded
+            }
+        }
+
+        guard let filenameRange = disposition.range(of: "filename=") else { return nil }
+        let raw = String(disposition[filenameRange.upperBound...])
+            .split(separator: ";", maxSplits: 1)
+            .first
+            .map(String.init)?
+            .trimmingCharacters(in: CharacterSet(charactersIn: "\" "))
+        return raw?.isEmpty == false ? raw : nil
     }
 }

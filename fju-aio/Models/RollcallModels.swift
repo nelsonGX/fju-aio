@@ -1,5 +1,46 @@
 import Foundation
 
+// MARK: - Attendance Rollcall (per-course history)
+
+struct AttendanceRollcall: Identifiable, Codable, Sendable {
+    let rollcall_id: Int
+    let title: String
+    let rollcall_time: String
+    let rollcall_status: String
+    let status: String
+    let student_status: String
+    let student_status_detail: String
+    let source: String
+    let type: String
+    let is_number: Bool
+    let is_radar: Bool
+    let is_expired: Bool
+    let scored: Bool
+    let student_rollcall_id: Int
+    let published_at: String?
+
+    var id: Int { rollcall_id }
+
+    var rollcallDate: Date? {
+        ISO8601DateFormatter().date(from: rollcall_time)
+    }
+
+    var attendanceStatus: AttendanceRecord.AttendanceStatus {
+        switch status {
+        case "absent": return .absent
+        case "on_call_fine", "on_call": return .present
+        case "late": return .late
+        default: return .absent
+        }
+    }
+}
+
+struct AttendanceRollcallsResponse: Codable {
+    let rollcalls: [AttendanceRollcall]
+}
+
+// MARK: - Active Rollcall (check-in)
+
 struct Rollcall: Identifiable, Codable, Sendable {
     let rollcall_id: Int
     let course_id: Int

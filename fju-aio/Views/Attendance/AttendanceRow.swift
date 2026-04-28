@@ -4,11 +4,16 @@ struct AttendanceRow: View {
     let record: AttendanceRecord
 
     var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
+        HStack(spacing: 12) {
+            Image(systemName: sourceIcon)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: 16)
+
+            VStack(alignment: .leading, spacing: 2) {
                 Text(record.courseName)
                     .font(.body)
-                Text("第\(record.period)節 · \(FJUPeriod.timeRange(for: record.period))")
+                Text(record.rollcallTitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -21,6 +26,15 @@ struct AttendanceRow: View {
                 .padding(.vertical, 4)
                 .foregroundStyle(statusColor)
                 .background(statusColor.opacity(0.12), in: Capsule())
+        }
+    }
+
+    private var sourceIcon: String {
+        switch record.source {
+        case "qr": return "qrcode"
+        case "radar": return "wave.3.right"
+        case "number": return "number"
+        default: return "checkmark.circle"
         }
     }
 
