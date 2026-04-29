@@ -76,6 +76,40 @@ actor RollcallService {
         return json?["status"] as? String == "on_call"
     }
 
+    // MARK: - Radar Check-In
+
+    func radarCheckIn(rollcall: Rollcall, latitude: Double, longitude: Double, accuracy: Double) async throws -> Bool {
+        let session = try await authService.getValidSession()
+
+        let url = URL(string: "\(baseURL)/api/rollcall/\(rollcall.rollcall_id)/answer")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        Self.applyHeaders(&request, sessionId: session.sessionId)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any?] = [
+            "deviceId":         Self.generateDeviceId(),
+            "latitude":         latitude,
+            "longitude":        longitude,
+            "speed":            0,
+            "accuracy":         accuracy,
+            "altitude":         0,
+            "altitudeAccuracy": nil,
+            "heading":          0,
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body.compactMapValues { $0 })
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else { return false }
+
+        if http.statusCode == 401 || http.statusCode == 403 { throw RollcallError.sessionExpired }
+        guard http.statusCode == 200 else { return false }
+
+        let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let status = json?["status"] as? String ?? ""
+        return status == "on_call" || status == "late"
+    }
+
     // MARK: - Helpers
 
     private static func applyHeaders(_ request: inout URLRequest, sessionId: String) {

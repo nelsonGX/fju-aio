@@ -1,5 +1,7 @@
 import SwiftUI
 
+// MARK: - CheckInView
+
 struct CheckInView: View {
     @State private var rollcalls: [Rollcall] = []
     @State private var isLoading = false
@@ -26,6 +28,9 @@ struct CheckInView: View {
                     onManualEntry: {
                         selectedRollcall = rollcall
                         showManualEntry = true
+                    },
+                    onRadarCheckIn: {
+                        Task { await doRadarCheckIn(rollcall: rollcall) }
                     }
                 )
                 .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
@@ -74,6 +79,20 @@ struct CheckInView: View {
             checkInResults[rollcall.rollcall_id] = .failure(error.localizedDescription)
         }
     }
+
+    private func doRadarCheckIn(rollcall: Rollcall) async {
+        do {
+            let success = try await RollcallService.shared.radarCheckIn(
+                rollcall: rollcall,
+                latitude: 25.036238,
+                longitude: 121.432292,
+                accuracy: 50
+            )
+            checkInResults[rollcall.rollcall_id] = success ? .success(nil) : .failure("雷達點名失敗，可能不在教室範圍內")
+        } catch {
+            checkInResults[rollcall.rollcall_id] = .failure(error.localizedDescription)
+        }
+    }
 }
 
 // MARK: - Rollcall Row
@@ -82,6 +101,7 @@ private struct RollcallRowView: View {
     let rollcall: Rollcall
     let result: RollcallCheckInResult?
     let onManualEntry: () -> Void
+    let onRadarCheckIn: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -118,10 +138,13 @@ private struct RollcallRowView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(.pink)
-                } else {
-                    Text("雷達點名目前不支援")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                } else if rollcall.is_radar {
+                    Button(action: onRadarCheckIn) {
+                        Label("雷達簽到", systemImage: "location.fill")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.blue)
                 }
             }
         }
@@ -131,9 +154,15 @@ private struct RollcallRowView: View {
     private func resultView(_ result: RollcallCheckInResult) -> some View {
         switch result {
         case .success(let code):
-            Label("簽到成功！數字碼：\(code)", systemImage: "checkmark.circle.fill")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.green)
+            if let code {
+                Label("簽到成功！數字碼：\(code)", systemImage: "checkmark.circle.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.green)
+            } else {
+                Label("雷達簽到成功！", systemImage: "checkmark.circle.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.green)
+            }
         case .failure(let message):
             Label(message, systemImage: "xmark.circle.fill")
                 .font(.subheadline)

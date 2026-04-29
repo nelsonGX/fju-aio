@@ -66,7 +66,7 @@ struct RollcallsResponse: Codable {
 }
 
 enum RollcallCheckInResult {
-    case success(String)
+    case success(String?)   // code for number rollcall; nil for radar
     case failure(String)
 }
 

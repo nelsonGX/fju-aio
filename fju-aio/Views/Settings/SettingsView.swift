@@ -876,7 +876,7 @@ struct CheckInTestView: View {
                     if let result {
                         switch result {
                         case .success(let code):
-                            Label("簽到成功！數字碼：\(code)", systemImage: "checkmark.circle.fill")
+                            Label("簽到成功！數字碼：\(code ?? "")", systemImage: "checkmark.circle.fill")
                                 .font(.subheadline.weight(.semibold)).foregroundStyle(.green)
                         case .failure(let msg):
                             Label(msg, systemImage: "xmark.circle.fill")
