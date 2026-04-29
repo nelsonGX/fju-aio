@@ -1,4 +1,5 @@
 import SwiftUI
+import AVFoundation
 
 // MARK: - CheckInView
 
@@ -7,6 +8,7 @@ struct CheckInView: View {
     @State private var isLoading = false
     @State private var checkInResults: [Int: RollcallCheckInResult] = [:]
     @State private var showManualEntry = false
+    @State private var showQRScanner = false
     @State private var selectedRollcall: Rollcall? = nil
     @State private var errorMessage: String? = nil
 
@@ -31,6 +33,10 @@ struct CheckInView: View {
                     },
                     onRadarCheckIn: {
                         Task { await doRadarCheckIn(rollcall: rollcall) }
+                    },
+                    onQRCheckIn: {
+                        selectedRollcall = rollcall
+                        showQRScanner = true
                     }
                 )
                 .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
@@ -56,6 +62,14 @@ struct CheckInView: View {
                 ManualCheckInSheet(rollcall: rollcall) { code in
                     showManualEntry = false
                     Task { await doManualCheckIn(rollcall: rollcall, code: code) }
+                }
+            }
+        }
+        .sheet(isPresented: $showQRScanner) {
+            if let rollcall = selectedRollcall {
+                QRScannerSheet(rollcall: rollcall) { qrContent in
+                    showQRScanner = false
+                    Task { await doQRCheckIn(rollcall: rollcall, qrContent: qrContent) }
                 }
             }
         }
@@ -93,6 +107,15 @@ struct CheckInView: View {
             checkInResults[rollcall.rollcall_id] = .failure(error.localizedDescription)
         }
     }
+
+    private func doQRCheckIn(rollcall: Rollcall, qrContent: String) async {
+        do {
+            let success = try await RollcallService.shared.qrCheckIn(rollcall: rollcall, qrContent: qrContent)
+            checkInResults[rollcall.rollcall_id] = success ? .success(nil) : .failure("QR Code 點名失敗，請再試一次")
+        } catch {
+            checkInResults[rollcall.rollcall_id] = .failure(error.localizedDescription)
+        }
+    }
 }
 
 // MARK: - Rollcall Row
@@ -102,6 +125,7 @@ private struct RollcallRowView: View {
     let result: RollcallCheckInResult?
     let onManualEntry: () -> Void
     let onRadarCheckIn: () -> Void
+    let onQRCheckIn: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -121,9 +145,9 @@ private struct RollcallRowView: View {
             }
 
             HStack(spacing: 6) {
-                Image(systemName: rollcall.is_number ? "number.circle.fill" : "location.circle.fill")
+                Image(systemName: rollcall.is_number ? "number.circle.fill" : rollcall.is_qr ? "qrcode.viewfinder" : "location.circle.fill")
                     .font(.caption)
-                Text(rollcall.is_number ? "數字碼點名" : "雷達點名")
+                Text(rollcall.is_number ? "數字碼點名" : rollcall.is_qr ? "QR Code 點名" : "雷達點名")
                     .font(.caption)
             }
             .foregroundStyle(.secondary)
@@ -138,6 +162,13 @@ private struct RollcallRowView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(.pink)
+                } else if rollcall.is_qr {
+                    Button(action: onQRCheckIn) {
+                        Label("掃描 QR Code", systemImage: "qrcode.viewfinder")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.purple)
                 } else if rollcall.is_radar {
                     Button(action: onRadarCheckIn) {
                         Label("雷達簽到", systemImage: "location.fill")
@@ -159,7 +190,7 @@ private struct RollcallRowView: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.green)
             } else {
-                Label("雷達簽到成功！", systemImage: "checkmark.circle.fill")
+                Label("簽到成功！", systemImage: "checkmark.circle.fill")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.green)
             }
@@ -257,6 +288,137 @@ struct ManualCheckInSheet: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - QR Scanner Sheet
+
+struct QRScannerSheet: View {
+    let rollcall: Rollcall
+    let onScan: (String) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                QRScannerView(onScan: { code in
+                    onScan(code)
+                })
+                .ignoresSafeArea()
+
+                VStack {
+                    Spacer()
+                    VStack(spacing: 6) {
+                        Text(rollcall.course_title)
+                            .font(.headline)
+                            .foregroundStyle(.white)
+                        Text("請掃描教師顯示的 QR Code")
+                            .font(.subheadline)
+                            .foregroundStyle(.white.opacity(0.8))
+                    }
+                    .padding()
+                    .background(.black.opacity(0.5))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .padding(.bottom, 48)
+                }
+            }
+            .navigationTitle("掃描 QR Code")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbarBackground(.black.opacity(0.6), for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { dismiss() }
+                        .foregroundStyle(.white)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - QR Scanner (AVFoundation)
+
+private struct QRScannerView: UIViewControllerRepresentable {
+    let onScan: (String) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onScan: onScan)
+    }
+
+    func makeUIViewController(context: Context) -> ScannerViewController {
+        let vc = ScannerViewController()
+        vc.delegate = context.coordinator
+        return vc
+    }
+
+    func updateUIViewController(_ uiViewController: ScannerViewController, context: Context) {}
+
+    final class Coordinator: NSObject, AVCaptureMetadataOutputObjectsDelegate {
+        let onScan: (String) -> Void
+        private var hasScanned = false
+
+        init(onScan: @escaping (String) -> Void) {
+            self.onScan = onScan
+        }
+
+        func metadataOutput(_ output: AVCaptureMetadataOutput, didOutput metadataObjects: [AVMetadataObject], from connection: AVCaptureConnection) {
+            guard !hasScanned,
+                  let obj = metadataObjects.first as? AVMetadataMachineReadableCodeObject,
+                  let value = obj.stringValue else { return }
+            hasScanned = true
+            DispatchQueue.main.async { self.onScan(value) }
+        }
+    }
+}
+
+final class ScannerViewController: UIViewController {
+    var delegate: AVCaptureMetadataOutputObjectsDelegate?
+
+    private var captureSession: AVCaptureSession?
+    private var previewLayer: AVCaptureVideoPreviewLayer?
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .black
+        setupCamera()
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        DispatchQueue.global(qos: .userInitiated).async { self.captureSession?.startRunning() }
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        captureSession?.stopRunning()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        previewLayer?.frame = view.bounds
+    }
+
+    private func setupCamera() {
+        let session = AVCaptureSession()
+        guard let device = AVCaptureDevice.default(for: .video),
+              let input = try? AVCaptureDeviceInput(device: device),
+              session.canAddInput(input) else { return }
+        session.addInput(input)
+
+        let output = AVCaptureMetadataOutput()
+        guard session.canAddOutput(output) else { return }
+        session.addOutput(output)
+        output.setMetadataObjectsDelegate(delegate, queue: .main)
+        output.metadataObjectTypes = [.qr]
+
+        let preview = AVCaptureVideoPreviewLayer(session: session)
+        preview.frame = view.bounds
+        preview.videoGravity = .resizeAspectFill
+        view.layer.addSublayer(preview)
+        previewLayer = preview
+
+        captureSession = session
     }
 }
 
