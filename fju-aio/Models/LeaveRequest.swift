@@ -34,13 +34,149 @@ nonisolated struct LeaveRequest: Identifiable, Sendable {
     enum StatusColor { case approved, pending, rejected, draft }
 }
 
-// MARK: - Leave reference data
-// API shape: {"value": 1, "label": "一般請假", "lcId": 0}
+// MARK: - Generic coding key
 
-struct LeaveKind: Identifiable, Codable, Sendable, Hashable {
+nonisolated struct AnyCodingKey: CodingKey {
+    let stringValue: String
+    var intValue: Int? { nil }
+
+    init(_ string: String) { stringValue = string }
+    init?(stringValue: String) { self.stringValue = stringValue }
+    init?(intValue: Int) { return nil }
+}
+
+// MARK: - Leave reference data
+
+nonisolated struct LeaveKind: Identifiable, Codable, Sendable, Hashable {
     let value: Int
     let label: String
-    let lcId: Int
+    let lcId: Int?
+    let activeFlag: Int?
+    let genderKind: Int?
+    let isReqFamType: Bool?
+    let isReqFamLevel: Bool?
+
+    var id: Int { value }
+    var refLeaveSn: Int { value }
+    var leaveCna: String { label }
+    var leaveNa: String { label }
+
+    var requiresFamilyFields: Bool { isReqFamType == true || isReqFamLevel == true }
+    var femaleOnly: Bool { genderKind == 2 }
+    var maleOnly: Bool { genderKind == 1 }
+
+    init(
+        value: Int,
+        label: String,
+        lcId: Int? = nil,
+        activeFlag: Int? = nil,
+        genderKind: Int? = nil,
+        isReqFamType: Bool? = nil,
+        isReqFamLevel: Bool? = nil
+    ) {
+        self.value = value
+        self.label = label
+        self.lcId = lcId
+        self.activeFlag = activeFlag
+        self.genderKind = genderKind
+        self.isReqFamType = isReqFamType
+        self.isReqFamLevel = isReqFamLevel
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: AnyCodingKey.self)
+
+        if let value = try? c.decode(Int.self, forKey: AnyCodingKey("value")) {
+            self.value = value
+            self.label = (try? c.decode(String.self, forKey: AnyCodingKey("label"))) ?? ""
+            self.lcId = try? c.decode(Int.self, forKey: AnyCodingKey("lcId"))
+        } else if let refLeaveSn = try? c.decode(Int.self, forKey: AnyCodingKey("refLeaveSn")) {
+            self.value = refLeaveSn
+            self.label = (try? c.decode(String.self, forKey: AnyCodingKey("leaveCna"))) ?? ""
+            self.lcId = nil
+        } else if let leaveKind = try? c.decode(Int.self, forKey: AnyCodingKey("leaveKind")) {
+            self.value = leaveKind
+            self.label = (try? c.decode(String.self, forKey: AnyCodingKey("leaveKindCna"))) ?? ""
+            self.lcId = nil
+        } else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "LeaveKind: no recognised key"))
+        }
+
+        self.activeFlag = try? c.decode(Int.self, forKey: AnyCodingKey("activeFlag"))
+        self.genderKind = try? c.decode(Int.self, forKey: AnyCodingKey("genderKind"))
+        self.isReqFamType = try? c.decode(Bool.self, forKey: AnyCodingKey("isReqFamType"))
+        self.isReqFamLevel = try? c.decode(Bool.self, forKey: AnyCodingKey("isReqFamLevel"))
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: AnyCodingKey.self)
+        try c.encode(value, forKey: AnyCodingKey("value"))
+        try c.encode(label, forKey: AnyCodingKey("label"))
+        try c.encodeIfPresent(lcId, forKey: AnyCodingKey("lcId"))
+        try c.encodeIfPresent(activeFlag, forKey: AnyCodingKey("activeFlag"))
+        try c.encodeIfPresent(genderKind, forKey: AnyCodingKey("genderKind"))
+        try c.encodeIfPresent(isReqFamType, forKey: AnyCodingKey("isReqFamType"))
+        try c.encodeIfPresent(isReqFamLevel, forKey: AnyCodingKey("isReqFamLevel"))
+    }
+}
+
+nonisolated struct LeaveCategory: Identifiable, Codable, Sendable, Hashable {
+    let leaveKind: Int
+    let leaveKindCna: String
+
+    var id: Int { leaveKind }
+    var value: Int { leaveKind }
+    var label: String { leaveKindCna }
+}
+
+struct RefLeave: Identifiable, Codable, Sendable, Hashable {
+    let refLeaveSn: Int
+    let leaveCna: String
+    let leaveCmemo: String?
+    let activeFlag: Int?
+    let examActiveFlag: Int?
+    let displayOrder: Int?
+    let examDisplayOrder: Int?
+    let isReqFamType: Bool?
+    let isReqFamLevel: Bool?
+    let docList: [LeaveDocMapping]?
+    let quizDocList: [LeaveDocMapping]?
+    let examDocList: [LeaveDocMapping]?
+    let isLeaveFlow: Bool?
+    let isLeaveFlowQuiz: Bool?
+    let isLeaveFlowExam: Bool?
+
+    var id: Int { refLeaveSn }
+    var value: Int { refLeaveSn }
+    var label: String { leaveCna }
+    var leaveNa: String { leaveCna }
+    var requiresFamilyFields: Bool { isReqFamType == true || isReqFamLevel == true }
+}
+
+struct LeaveDocMapping: Identifiable, Codable, Sendable, Hashable {
+    let leaveDocMappingSn: Int
+    let leaveKind: Int
+    let examKind: Int
+    let refLeaveSn: Int
+    let refDocSn: Int
+    let isRequired: Bool
+    let memo: String?
+    let docCna: String?
+
+    var id: Int { leaveDocMappingSn }
+}
+
+// MARK: - Course sections
+
+nonisolated struct CourseSection: Identifiable, Codable, Sendable, Hashable {
+    let sectNo: Int
+    let sectNa: String
+    let beginTime: String
+    let endTime: String
+
+    var id: Int { sectNo }
+    var displayLabel: String { "\(sectNa) \(beginTime)-\(endTime)" }
+}
 
 nonisolated struct CourseSectionListResponse: Codable, Sendable {
     let statusCode: Int
@@ -51,9 +187,9 @@ nonisolated struct CourseSectionListResponse: Codable, Sendable {
 
 nonisolated struct CourseSectionRaw: Codable, Sendable {
     let sectNo: Int
-    let sectionCna: String          // e.g. "D5"
-    let sectionStartTime: String?   // e.g. "13:40"
-    let sectionEndTime: String?     // e.g. "14:30"
+    let sectionCna: String
+    let sectionStartTime: String?
+    let sectionEndTime: String?
 
     var resolvedSectNo: Int { sectNo }
     var resolvedSectNa: String { sectionCna }
@@ -61,56 +197,193 @@ nonisolated struct CourseSectionRaw: Codable, Sendable {
     var resolvedEndTime: String { sectionEndTime ?? "" }
 }
 
-// MARK: - Family type/level from RefList/FamType, RefList/FamLevel
-// Using flexible decoding to handle various possible field name shapes
+struct LeaveSectionListResponse: Codable, Sendable {
+    let statusCode: Int
+    let result: [LeaveSection]
+    let message: AnyCodable?
+    let errorMessage: AnyCodable?
+}
+
+struct LeaveSection: Identifiable, Codable, Sendable, Hashable {
+    let refSectionSn: Int?
+    let sectNo: Int
+    let sectionNo: String?
+    let sectionCna: String
+    let sectionStartTime: String?
+    let sectionEndTime: String?
+
+    var id: Int { sectNo }
+    var displayName: String {
+        [sectionNo, sectionCna, [sectionStartTime, sectionEndTime].compactMap { $0 }.joined(separator: "-")]
+            .compactMap { value in
+                guard let value, !value.isEmpty else { return nil }
+                return value
+            }
+            .joined(separator: " ")
+    }
+}
+
+// MARK: - Family type/level and contact
 
 nonisolated struct FamTypeItem: Identifiable, Codable, Sendable, Hashable {
     let value: Int
     let label: String
+
     var id: Int { value }
     var leaveNa: String { label }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: AnyCodingKey.self)
+        if let value = try? c.decode(Int.self, forKey: AnyCodingKey("famTypeNo")) {
+            self.value = value
+            self.label = (try? c.decode(String.self, forKey: AnyCodingKey("famTypeCna"))) ?? ""
+        } else if let value = try? c.decode(Int.self, forKey: AnyCodingKey("value")) {
+            self.value = value
+            self.label = (try? c.decode(String.self, forKey: AnyCodingKey("label"))) ?? ""
+        } else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "FamTypeItem: no recognised key"))
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: AnyCodingKey.self)
+        try c.encode(value, forKey: AnyCodingKey("value"))
+        try c.encode(label, forKey: AnyCodingKey("label"))
+    }
 }
 
-struct RefLeave: Identifiable, Codable, Sendable, Hashable {
-    let refLeaveSn: Int
-    let leaveCna: String
-    let leaveCmemo: String
-    let activeFlag: Int
-    let examActiveFlag: Int
-    let displayOrder: Int
-    let examDisplayOrder: Int
-    let isReqFamType: Bool
-    let isReqFamLevel: Bool
-    let docList: [LeaveDocMapping]
-    let quizDocList: [LeaveDocMapping]
-    let examDocList: [LeaveDocMapping]
-    let isLeaveFlow: Bool
-    let isLeaveFlowQuiz: Bool
-    let isLeaveFlowExam: Bool
+nonisolated struct FamLevelItem: Identifiable, Codable, Sendable, Hashable {
+    let value: Int
+    let label: String
 
-    var id: Int { refLeaveSn }
-    var leaveNa: String { leaveCna }
+    var id: Int { value }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: AnyCodingKey.self)
+        if let value = try? c.decode(Int.self, forKey: AnyCodingKey("famLevelNo")) {
+            self.value = value
+            self.label = (try? c.decode(String.self, forKey: AnyCodingKey("famLevelCna"))) ?? ""
+        } else if let value = try? c.decode(Int.self, forKey: AnyCodingKey("value")) {
+            self.value = value
+            self.label = (try? c.decode(String.self, forKey: AnyCodingKey("label"))) ?? ""
+        } else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "FamLevelItem: no recognised key"))
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: AnyCodingKey.self)
+        try c.encode(value, forKey: AnyCodingKey("value"))
+        try c.encode(label, forKey: AnyCodingKey("label"))
+    }
 }
 
-struct LeaveDocMapping: Identifiable, Codable, Sendable, Hashable {
-    let leaveDocMappingSn: Int
-    let leaveKind: Int
-    let examKind: Int
-    let refLeaveSn: Int
-    let refDocSn: Int
-    let isRequired: Bool
-    let memo: String
-    let docCna: String
-
-    var id: Int { leaveDocMappingSn }
+nonisolated struct FamTypeListResponse: Codable, Sendable {
+    let statusCode: Int
+    let result: [FamTypeItem]
+    let message: AnyCodable?
+    let errorMessage: AnyCodable?
 }
 
-// MARK: - Leave stat from StuLeave/Stat
+nonisolated struct FamLevelListResponse: Codable, Sendable {
+    let statusCode: Int
+    let result: [FamLevelItem]
+    let message: AnyCodable?
+    let errorMessage: AnyCodable?
+}
 
-nonisolated struct LeaveStat: Sendable {
-    let leaveName: String
-    let totalSections: Int
-    let totalDays: Int
+nonisolated struct StudentContactResponse: Codable, Sendable {
+    let statusCode: Int
+    let result: StudentContact?
+    let message: AnyCodable?
+    let errorMessage: AnyCodable?
+}
+
+nonisolated struct StudentContact: Codable, Sendable {
+    let phoneNumber: String?
+    let emailAccount: String?
+}
+
+// MARK: - Leave record detail and selected courses
+
+nonisolated struct LeaveRecordDetailResponse: Codable, Sendable {
+    let statusCode: Int
+    let result: LeaveRecord?
+    let message: AnyCodable?
+    let errorMessage: AnyCodable?
+}
+
+nonisolated struct LeaveSelCouListResponse: Codable, Sendable {
+    let statusCode: Int
+    let result: [LeaveSelCouCourse]
+    let message: AnyCodable?
+    let errorMessage: AnyCodable?
+}
+
+nonisolated struct LeaveSelCouCourse: Codable, Sendable, Identifiable {
+    let jonCouSn: Int
+    let avaCouSn: Int
+    let couCNa: String
+    let couNo: String
+    let tchCNa: String?
+    let dptGrdNa: String?
+    let couWek: String
+    let sectNos: [Int]
+    let leaveDates: [LeaveSelCouDate]
+
+    var id: Int { jonCouSn }
+}
+
+nonisolated struct LeaveSelCouDate: Codable, Sendable, Identifiable {
+    let couDate: String
+    let sectNo: Int
+    var isSelected: Bool = true
+
+    var id: String { "\(couDate)-\(sectNo)" }
+}
+
+// MARK: - Wizard state and POST payload
+
+nonisolated struct LeaveWizardDraft: Sendable {
+    var leaveKind: Int = 1
+    var hy: Int = 114
+    var ht: Int = 2
+    var refLeaveSn: Int = 2
+    var beginDate: String = ""
+    var endDate: String = ""
+    var beginSectNo: Int = 1
+    var endSectNo: Int = 9
+    var leaveReason: String = ""
+    var phoneNumber: String = ""
+    var emailAccount: String = ""
+    var famTypeNo: Int?
+    var famLevelNo: Int?
+    var proofFileData: Data?
+    var proofFileExt: String = "pdf"
+    var proofFileName: String = ""
+    var leaveApplySn: Int = 0
+    var applyNo: String = ""
+}
+
+nonisolated struct SelCouPostEntry: Codable, Sendable {
+    let jonCouSn: Int
+    let avaCouSn: Int
+    let stuNo: String
+    let couWek: String
+    let seqTims: [SelCouSeqTim]
+    let couDates: [String]
+}
+
+nonisolated struct SelCouSeqTim: Codable, Sendable {
+    let section: String
+    let leaveSeqTimSn: Int
+    let leaveApplySn: Int
+    let jonCouSn: Int
+    let avaCouSn: Int
+    let stuNo: String?
+    let couDate: String
+    let couWek: String
+    let sectNo: Int
 }
 
 // MARK: - API response wrappers
@@ -122,32 +395,18 @@ nonisolated struct LeaveKindListResponse: Codable, Sendable {
     let errorMessage: AnyCodable?
 }
 
+nonisolated struct LeaveCategoryListResponse: Codable, Sendable {
+    let statusCode: Int
+    let result: [LeaveCategory]
+    let message: AnyCodable?
+    let errorMessage: AnyCodable?
+}
+
 struct RefLeaveListResponse: Codable, Sendable {
     let statusCode: Int
     let result: [RefLeave]
     let message: AnyCodable?
     let errorMessage: AnyCodable?
-}
-
-struct LeaveSectionListResponse: Codable, Sendable {
-    let statusCode: Int
-    let result: [LeaveSection]
-    let message: AnyCodable?
-    let errorMessage: AnyCodable?
-}
-
-struct LeaveSection: Identifiable, Codable, Sendable, Hashable {
-    let refSectionSn: Int
-    let sectNo: Int
-    let sectionNo: String
-    let sectionCna: String
-    let sectionStartTime: String
-    let sectionEndTime: String
-
-    var id: Int { sectNo }
-    var displayName: String {
-        "\(sectionNo) \(sectionCna) \(sectionStartTime)-\(sectionEndTime)"
-    }
 }
 
 struct LeaveDetailResponse: Codable, Sendable {
@@ -174,10 +433,10 @@ struct LeaveDetail: Codable, Sendable, Identifiable, Hashable {
     let applyStatus: Int?
     let applyStatusNa: String?
     let officialLeaveSn: Int
-    let phoneNumber: String
-    let emailAccount: String
-    let famTypeNo: Int
-    let famLevelNo: Int
+    let phoneNumber: String?
+    let emailAccount: String?
+    let famTypeNo: Int?
+    let famLevelNo: Int?
     let leaveKindNa: String
     let examKindNa: String?
     let leaveNa: String
@@ -194,21 +453,21 @@ struct LeaveDetail: Codable, Sendable, Identifiable, Hashable {
 struct LeaveApplyDoc: Identifiable, Codable, Sendable, Hashable {
     let leaveApplyDocSn: Int
     let leaveApplySn: Int
-    let officialLeaveSn: Int
+    let officialLeaveSn: Int?
     let refDocSn: Int
     let docNa: String?
     let docMemo: String?
-    let fileRawName: String
-    let checkStatus: Int
+    let fileRawName: String?
+    let checkStatus: Int?
 
     var id: Int { leaveApplyDocSn }
 }
 
 struct LeaveApplyAPIResponse: Codable, Sendable {
     let statusCode: Int
-    let result: Int?            // the new leaveApplySn (null on error)
+    let result: Int?
     let message: LeaveMessage?
-    let errorMessage: [LeaveErrorField]?  // [{key, message}] on 400
+    let errorMessage: [LeaveErrorField]?
 
     struct LeaveMessage: Codable, Sendable {
         let info: String?
@@ -250,22 +509,34 @@ struct LeaveBoolResponse: Codable, Sendable {
     nonisolated var success: Bool { statusCode == 200 && result }
 }
 
-struct LeaveStatListResponse: Codable, Sendable {
+// MARK: - Leave stat from StuLeave/Stat
+
+nonisolated struct LeaveStat: Sendable {
+    let leaveName: String
+    let totalSections: Int
+    let totalDays: Int
+}
+
+nonisolated struct LeaveStatResponse: Codable, Sendable {
     let statusCode: Int
-    let result: LeaveStatResult
+    let result: LeaveStatSummary
     let message: AnyCodable?
     let errorMessage: AnyCodable?
 }
 
-struct LeaveStatResult: Codable, Sendable {
+typealias LeaveStatResult = LeaveStatSummary
+typealias LeaveStatCourse = LeaveStatRecord
+typealias LeaveStatListResponse = LeaveStatResponse
+
+nonisolated struct LeaveStatSummary: Codable, Sendable {
     let stuNo: String
     let sumLeaveSect: Int
     let sumLeaveSectYes: Int
     let sumLeaveSectNo: Int
-    let statLeaveCouList: [LeaveStatCourse]
+    let statLeaveCouList: [LeaveStatRecord]
 }
 
-struct LeaveStatCourse: Codable, Sendable, Identifiable {
+nonisolated struct LeaveStatRecord: Codable, Sendable, Identifiable {
     let stuNo: String?
     let cntLeaveSect: Int
     let cntLeaveSectYes: Int
@@ -281,7 +552,7 @@ struct LeaveStatCourse: Codable, Sendable, Identifiable {
     let avaDptCn: String?
     let javaNo: String?
     let avaNo: String?
-    let couCna: String?
+    let couCna: String
     let couEna: String?
     let reqSel: String?
     let reqSelCna: String?
@@ -295,24 +566,13 @@ struct LeaveStatCourse: Codable, Sendable, Identifiable {
     let sumSect: Int
 
     var id: Int { jonCouSn }
-    var courseName: String { couCna?.isEmpty == false ? couCna! : (avaNo ?? "未命名課程") }
+    var courseCode: String { javaNo ?? avaNo ?? "" }
+    var courseName: String { couCna.isEmpty ? (avaNo ?? "未命名課程") : couCna }
     var teacherName: String { tchCna?.isEmpty == false ? tchCna! : (tchEna ?? "") }
-    var scheduleText: String {
-        let items = seqTims.compactMap { item -> String? in
-            guard let section = item.section?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !section.isEmpty else {
-                return nil
-            }
-            if let week = item.couWekNa?.trimmingCharacters(in: .whitespacesAndNewlines), !week.isEmpty {
-                return "\(week) \(section)"
-            }
-            return section
-        }
-        return Array(Set(items)).sorted().joined(separator: "、")
-    }
+    var scheduleText: String { seqTims.map(\.displayText).joined(separator: "、") }
 }
 
-struct LeaveStatSeqTim: Codable, Sendable, Hashable {
+nonisolated struct LeaveStatSeqTim: Codable, Sendable, Identifiable, Hashable {
     let seqTimSn: Int?
     let avaCouSn: Int?
     let sda: String?
@@ -320,9 +580,9 @@ struct LeaveStatSeqTim: Codable, Sendable, Hashable {
     let couWekCna: String?
     let couWekEna: String?
     let couWekNa: String?
-    let section: String?
+    let section: String
     let sect: String?
-    let sectNo: Int?
+    let sectNo: Int
     let couDate: String?
     let weeklyCna: String?
     let weeklyEna: String?
@@ -334,10 +594,21 @@ struct LeaveStatSeqTim: Codable, Sendable, Hashable {
     let holidayName: String?
     let dayPeriodKind: Int?
     let holidayDiv: String?
+
+    var id: Int { seqTimSn ?? sectNo }
+    var displayText: String {
+        if let couWekNa, !couWekNa.isEmpty {
+            return "\(couWekNa) \(section)"
+        }
+        if let couWekCna, !couWekCna.isEmpty {
+            return "\(couWekCna) \(section)"
+        }
+        return section
+    }
 }
 
-struct LeaveStatLeaveSeqTim: Codable, Sendable, Hashable {
-    let section: String?
+nonisolated struct LeaveStatLeaveSeqTim: Codable, Sendable, Identifiable, Hashable {
+    let section: String
     let leaveSeqTimSn: Int?
     let leaveApplySn: Int?
     let jonCouSn: Int?
@@ -345,12 +616,15 @@ struct LeaveStatLeaveSeqTim: Codable, Sendable, Hashable {
     let stuNo: String?
     let couDate: String?
     let couWek: String?
-    let sectNo: Int?
+    let sectNo: Int
+
+    var id: String { "\(couDate ?? "")-\(section)-\(sectNo)" }
+    var displayDate: String? { couDate.map { String($0.prefix(10)) } }
 }
 
 nonisolated struct LeaveApplyDeadlineResponse: Codable, Sendable {
     let statusCode: Int
-    let result: String?         // deadline date string
+    let result: String?
     let message: AnyCodable?
     let errorMessage: AnyCodable?
 }

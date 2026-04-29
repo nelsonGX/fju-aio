@@ -10,11 +10,22 @@ private struct FeatureItem: Identifiable {
     let description: String
 }
 
+// MARK: - Onboarding Page Model
+
+private enum OnboardingPage: Int, CaseIterable {
+    case welcome
+    case features
+    case settings
+
+    var totalCount: Int { OnboardingPage.allCases.count }
+}
+
 // MARK: - Onboarding View
 
 struct OnboardingView: View {
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @AppStorage("preferredMapsApp") private var preferredMapsApp = "apple"
+    @State private var currentPage: OnboardingPage = .welcome
 
     private let notificationManager = CourseNotificationManager.shared
     private let syncStatus = SyncStatusManager.shared
@@ -47,180 +58,270 @@ struct OnboardingView: View {
     ]
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                headerSection
-                featuresSection
-                settingsSection
-                getStartedButton
+        VStack(spacing: 0) {
+            TabView(selection: $currentPage) {
+                welcomePage
+                    .tag(OnboardingPage.welcome)
+
+                featuresPage
+                    .tag(OnboardingPage.features)
+
+                settingsPage
+                    .tag(OnboardingPage.settings)
             }
-            .padding(.bottom, 40)
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .animation(.easeInOut, value: currentPage)
+
+            bottomBar
         }
         .background(Color(.systemGroupedBackground))
     }
 
-    // MARK: - Header
+    // MARK: - Page 1: Welcome
 
-    private var headerSection: some View {
-        VStack(spacing: 16) {
+    private var welcomePage: some View {
+        VStack(spacing: 24) {
+            Spacer()
+
             Image(systemName: "graduationcap.fill")
-                .font(.system(size: 64))
+                .font(.system(size: 80))
                 .foregroundStyle(.blue)
-                .padding(.top, 48)
 
-            Text("歡迎使用輔大校務系統")
-                .font(.title.bold())
-                .multilineTextAlignment(.center)
+            VStack(spacing: 12) {
+                Text("歡迎使用輔大 All In One")
+                    .font(.largeTitle.bold())
+                    .multilineTextAlignment(.center)
 
-            Text("一個 App，整合所有輔大校務服務")
+                Text("一個 App，整合所有輔大校務服務")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+
+            Spacer()
+
+            VStack(spacing: 16) {
+                highlightCard(icon: "bolt.fill", color: .yellow, title: "快速存取", description: "所有功能集中一處，隨時查閱")
+                highlightCard(icon: "lock.shield.fill", color: .blue, title: "安全登入", description: "使用學校 LDAP 統一帳號，資料加密儲存")
+                highlightCard(icon: "bell.badge.fill", color: .red, title: "智慧通知", description: "上課前動態島提醒，不再遲到")
+            }
+            .padding(.horizontal, 24)
+
+            Spacer()
+        }
+        .padding(.horizontal, 8)
+    }
+
+    private func highlightCard(icon: String, color: Color, title: String, description: String) -> some View {
+        HStack(spacing: 16) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(color.opacity(0.15))
+                    .frame(width: 44, height: 44)
+                Image(systemName: icon)
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(color)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.body.weight(.semibold))
+                Text(description)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+        }
+        .padding(14)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    // MARK: - Page 2: Features
+
+    private var featuresPage: some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                VStack(spacing: 8) {
+                    Text("主要功能")
+                        .font(.largeTitle.bold())
+                    Text("輔大 AIO 提供以下功能")
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.top, 40)
+                .padding(.bottom, 24)
+
+                VStack(spacing: 0) {
+                    ForEach(Array(features.enumerated()), id: \.element.id) { index, feature in
+                        FeatureRow(item: feature)
+                        if index < features.count - 1 {
+                            Divider()
+                                .padding(.leading, 60)
+                        }
+                    }
+                }
+                .background(Color(.secondarySystemGroupedBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .padding(.horizontal, 16)
+                .padding(.bottom, 16)
+            }
+        }
+    }
+
+    // MARK: - Page 3: Settings
+
+    private var settingsPage: some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                VStack(spacing: 8) {
+                    Text("初始設定")
+                        .font(.largeTitle.bold())
+                    Text("依照您的偏好設定功能")
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.top, 40)
+                .padding(.bottom, 24)
+
+                VStack(spacing: 0) {
+                    // Course notifications toggle
+                    Toggle(isOn: Binding(
+                        get: { notificationManager.isEnabled },
+                        set: { notificationManager.isEnabled = $0 }
+                    )) {
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("課程提醒通知")
+                                    .font(.body)
+                                Text("上課前透過靈動島提醒您")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } icon: {
+                            Image(systemName: "bell.badge.fill")
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+
+                    Divider()
+                        .padding(.leading, 60)
+
+                    // Sync status bar toggle
+                    Toggle(isOn: Binding(
+                        get: { syncStatus.isEnabled },
+                        set: { syncStatus.isEnabled = $0 }
+                    )) {
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("顯示同步狀態列")
+                                    .font(.body)
+                                Text("資料同步時在頂部顯示進度")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } icon: {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .foregroundStyle(.blue)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+
+                    Divider()
+                        .padding(.leading, 60)
+
+                    // Maps app picker
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("預設導航應用程式")
+                                    .font(.body)
+                                Text("用於校園地圖的導航功能")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } icon: {
+                            Image(systemName: "location.fill")
+                                .foregroundStyle(.green)
+                        }
+
+                        Picker("", selection: $preferredMapsApp) {
+                            Text("Apple 地圖").tag("apple")
+                            Text("Google 地圖").tag("google")
+                        }
+                        .pickerStyle(.segmented)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                }
+                .background(Color(.secondarySystemGroupedBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .padding(.horizontal, 16)
+
+                Text("這些設定之後可以在「設定」頁面隨時更改。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 32)
+                    .padding(.top, 8)
+            }
+        }
+    }
+
+    // MARK: - Bottom Bar
+
+    private var bottomBar: some View {
+        VStack(spacing: 16) {
+            // Page indicator dots
+            HStack(spacing: 8) {
+                ForEach(OnboardingPage.allCases, id: \.rawValue) { page in
+                    Capsule()
+                        .fill(currentPage == page ? Color.blue : Color.secondary.opacity(0.3))
+                        .frame(width: currentPage == page ? 20 : 8, height: 8)
+                        .animation(.spring(response: 0.3), value: currentPage)
+                }
+            }
+
+            // Action button
+            Button {
+                if currentPage == .settings {
+                    hasCompletedOnboarding = true
+                } else {
+                    withAnimation {
+                        currentPage = OnboardingPage(rawValue: currentPage.rawValue + 1) ?? .settings
+                    }
+                }
+            } label: {
+                Text(currentPage == .settings ? "開始使用" : "繼續")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(.blue)
+                    .foregroundStyle(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                    .contentShape(RoundedRectangle(cornerRadius: 14))
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 24)
+
+            // Skip button on non-last pages
+            if currentPage != .settings {
+                Button("跳過") {
+                    hasCompletedOnboarding = true
+                }
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .padding(.horizontal, 24)
-        .padding(.bottom, 36)
-    }
-
-    // MARK: - Features
-
-    private var featuresSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            sectionHeader("主要功能")
-
-            VStack(spacing: 0) {
-                ForEach(Array(features.enumerated()), id: \.element.id) { index, feature in
-                    FeatureRow(item: feature)
-                    if index < features.count - 1 {
-                        Divider()
-                            .padding(.leading, 60)
-                    }
-                }
+            } else {
+                // Placeholder to keep layout stable
+                Color.clear.frame(height: 20)
             }
-            .background(Color(.secondarySystemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .padding(.horizontal, 16)
         }
-    }
-
-    // MARK: - Settings
-
-    private var settingsSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            sectionHeader("初始設定")
-
-            VStack(spacing: 0) {
-                // Course notifications toggle
-                Toggle(isOn: Binding(
-                    get: { notificationManager.isEnabled },
-                    set: { notificationManager.isEnabled = $0 }
-                )) {
-                    Label {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("課程提醒通知")
-                                .font(.body)
-                            Text("上課前透過靈動島提醒您")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    } icon: {
-                        Image(systemName: "bell.badge.fill")
-                            .foregroundStyle(.orange)
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-
-                Divider()
-                    .padding(.leading, 60)
-
-                // Sync status bar toggle
-                Toggle(isOn: Binding(
-                    get: { syncStatus.isEnabled },
-                    set: { syncStatus.isEnabled = $0 }
-                )) {
-                    Label {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("顯示同步狀態列")
-                                .font(.body)
-                            Text("資料同步時在頂部顯示進度")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    } icon: {
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                            .foregroundStyle(.blue)
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-
-                Divider()
-                    .padding(.leading, 60)
-
-                // Maps app picker
-                VStack(alignment: .leading, spacing: 8) {
-                    Label {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("預設導航應用程式")
-                                .font(.body)
-                            Text("用於校園地圖的導航功能")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    } icon: {
-                        Image(systemName: "location.fill")
-                            .foregroundStyle(.green)
-                    }
-
-                    Picker("", selection: $preferredMapsApp) {
-                        Text("Apple 地圖").tag("apple")
-                        Text("Google 地圖").tag("google")
-                    }
-                    .pickerStyle(.segmented)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-            }
-            .background(Color(.secondarySystemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .padding(.horizontal, 16)
-
-            Text("這些設定之後可以在「設定」頁面隨時更改。")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 32)
-                .padding(.top, 8)
-        }
-    }
-
-    // MARK: - Get Started Button
-
-    private var getStartedButton: some View {
-        Button {
-            hasCompletedOnboarding = true
-        } label: {
-            Text("開始使用")
-                .font(.headline)
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(.blue)
-                .foregroundStyle(.white)
-                .clipShape(RoundedRectangle(cornerRadius: 14))
-        }
-        .padding(.horizontal, 24)
-        .padding(.top, 32)
-    }
-
-    // MARK: - Helpers
-
-    private func sectionHeader(_ title: String) -> some View {
-        Text(title)
-            .font(.footnote.weight(.semibold))
-            .foregroundStyle(.secondary)
-            .textCase(.uppercase)
-            .padding(.horizontal, 32)
-            .padding(.top, 28)
-            .padding(.bottom, 8)
+        .padding(.top, 12)
+        .padding(.bottom, 32)
+        .background(Color(.systemGroupedBackground))
     }
 }
 

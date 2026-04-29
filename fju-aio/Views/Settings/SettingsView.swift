@@ -155,6 +155,8 @@ struct SettingsView: View {
 struct DebugView: View {
     @Environment(\.fjuService) private var service
     @Environment(AuthenticationManager.self) private var authManager
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = true
+    @State private var showOnboarding = false
     @State private var courses: [Course] = []
     @State private var grades: [Grade] = []
     @State private var gpaSummary: GPASummary?
@@ -629,9 +631,22 @@ struct DebugView: View {
                     sessionLoadError = nil
                 }
             }
+
+            Section("Onboarding") {
+                Button("重新顯示 Onboarding") {
+                    showOnboarding = true
+                }
+
+                Button("重置 Onboarding 狀態", role: .destructive) {
+                    hasCompletedOnboarding = false
+                }
+            }
         }
         .navigationTitle("除錯資訊")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showOnboarding) {
+            OnboardingView()
+        }
         .task {
             await loadAllData()
             await loadAllSessions()
