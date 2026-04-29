@@ -29,6 +29,41 @@ actor TronClassAPIService {
 
     private init() {}
     
+    // MARK: - Notifications
+
+    func getNotifications(limit: Int = 20) async throws -> [TronClassNotification] {
+        logger.info("🔔 Fetching notifications...")
+        let session = try await authService.getValidSession()
+
+        var components = URLComponents(string: "\(baseURL)/ntf/users/\(session.userId)/notifications")!
+        components.queryItems = [URLQueryItem(name: "limit", value: "\(limit)")]
+        guard let url = components.url else { throw TronClassAPIError.invalidResponse }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("session=\(session.sessionId); org.springframework.web.servlet.i18n.CookieLocaleResolver.LOCALE=zh_TW", forHTTPHeaderField: "Cookie")
+        request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
+        request.setValue("en-US,en;q=0.9,zh-TW;q=0.8,zh;q=0.7", forHTTPHeaderField: "Accept-Language")
+        request.setValue("keep-alive", forHTTPHeaderField: "Connection")
+        request.setValue("https://elearn2.fju.edu.tw", forHTTPHeaderField: "Referer")
+        request.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
+        request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) TronClass/common", forHTTPHeaderField: "User-Agent")
+
+        do {
+            let (data, httpResponse) = try await networkService.performRequest(request)
+            try handleHTTPError(httpResponse)
+            let response = try JSONDecoder().decode(TronClassNotificationsResponse.self, from: data)
+            let bulletins = response.notifications.compactMap { $0.asBulletin }
+            logger.info("✅ Fetched \(bulletins.count) bulletin notifications")
+            return bulletins
+        } catch let error as TronClassAPIError {
+            throw error
+        } catch {
+            logger.error("❌ Failed to fetch notifications: \(error.localizedDescription)")
+            throw TronClassAPIError.networkError(error)
+        }
+    }
+
     // MARK: - Todos
     
     func getTodos() async throws -> [TodoItem] {

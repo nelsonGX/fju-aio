@@ -11,6 +11,8 @@ struct HomeView: View {
     @State private var lastNotificationSyncSignature: String?
     @State private var mapHighlightLocation: String? = nil
     @State private var navigateToCampusMap = false
+    @State private var bulletinNotifications: [TronClassNotification] = []
+    @State private var selectedBulletin: TronClassNotification?
 
     private let cache = AppCache.shared
 
@@ -29,6 +31,10 @@ struct HomeView: View {
                 }
 
                 moduleGridSection
+
+                if !bulletinNotifications.isEmpty {
+                    bulletinSection
+                }
             }
             .padding()
         }
@@ -36,6 +42,7 @@ struct HomeView: View {
         .navigationTitle("FJU AIO")
         .refreshable {
             await loadTodayCourses(forceRefresh: true)
+            await loadBulletinNotifications()
         }
         .sheet(isPresented: $isEditing) {
             HomeEditView()
@@ -53,8 +60,12 @@ struct HomeView: View {
         .navigationDestination(isPresented: $navigateToCampusMap) {
             CampusMapView(highlightLocation: mapHighlightLocation)
         }
+        .sheet(item: $selectedBulletin) { bulletin in
+            BulletinDetailView(notification: bulletin)
+        }
         .task {
             await loadTodayCourses(forceRefresh: false)
+            await loadBulletinNotifications()
         }
     }
 
@@ -161,6 +172,77 @@ struct HomeView: View {
                     }
                 }
             }
+        }
+    }
+
+    // MARK: - Bulletin Notifications
+
+    private var bulletinSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("公告通知")
+                .font(.headline)
+
+            VStack(spacing: 8) {
+                ForEach(bulletinNotifications) { notification in
+                    bulletinRow(notification)
+                        .onTapGesture { selectedBulletin = notification }
+                }
+            }
+        }
+    }
+
+    private func bulletinRow(_ notification: TronClassNotification) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(notification.bulletinTitle ?? "公告")
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(2)
+            if let courseName = notification.courseName {
+                Text(courseName)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if let content = notification.bulletinContent.flatMap({ stripHTML($0) }), !content.isEmpty {
+                Text(content)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            Text(notification.date, style: .relative)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: AppTheme.smallCornerRadius))
+    }
+
+    /// Strip HTML tags and decode common entities for display.
+    private func stripHTML(_ html: String) -> String? {
+        let plain = html
+            .replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
+            .replacingOccurrences(of: "&nbsp;", with: " ")
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&lt;", with: "<")
+            .replacingOccurrences(of: "&gt;", with: ">")
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            // Collapse runs of whitespace / newlines into a single space
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        return plain.isEmpty ? nil : plain
+    }
+
+    private func loadBulletinNotifications() async {
+        // Escalate the fetch limit until we collect at least 5 bulletin_created entries.
+        let limits = [50, 100, 200]
+        do {
+            for limit in limits {
+                let results = try await TronClassAPIService.shared.getNotifications(limit: limit)
+                bulletinNotifications = results
+                if results.count >= 5 { break }
+            }
+        } catch {
+            // Silently fail — notifications are non-critical
         }
     }
 

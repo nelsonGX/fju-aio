@@ -266,6 +266,84 @@ nonisolated struct EnrollmentEnrollmentsRequest: Encodable, Sendable {
     let fields = "id,user(id,email,name,nickname,user_no,grade(id,name),klass(id,name,code),department(id,name,code),org(id,name)),roles,retake_status,seat_number"
 }
 
+// MARK: - Notification Models
+
+nonisolated struct TronClassNotificationsResponse: Decodable, Sendable {
+    let notifications: [TronClassRawNotification]
+    let unread_count: Int?
+}
+
+/// Type-erased value for heterogeneous notification payload dictionaries.
+nonisolated enum NotificationPayloadValue: Decodable, Sendable {
+    case string(String)
+    case int(Int)
+    case double(Double)
+    case bool(Bool)
+    case null
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if container.decodeNil() { self = .null; return }
+        if let v = try? container.decode(Bool.self)   { self = .bool(v);   return }
+        if let v = try? container.decode(Int.self)    { self = .int(v);    return }
+        if let v = try? container.decode(Double.self) { self = .double(v); return }
+        if let v = try? container.decode(String.self) { self = .string(v); return }
+        self = .null
+    }
+
+    var stringValue: String? {
+        if case .string(let s) = self { return s }
+        return nil
+    }
+
+    var intValue: Int? {
+        if case .int(let i) = self { return i }
+        return nil
+    }
+}
+
+/// Raw notification — payload decoded as an opaque dictionary to handle the
+/// varying shapes across types (bulletin_created, exam_opened, topic_create, …).
+nonisolated struct TronClassRawNotification: Decodable, Sendable, Identifiable {
+    let id: String
+    let type: String
+    let top: Bool
+    let timestamp: Int64
+    let payload: [String: NotificationPayloadValue]
+
+    /// Promotes to a typed value when `type == "bulletin_created"`.
+    var asBulletin: TronClassNotification? {
+        guard type == "bulletin_created" else { return nil }
+        return TronClassNotification(
+            id: id,
+            top: top,
+            timestamp: timestamp,
+            bulletinTitle: payload["bulletin_title"]?.stringValue,
+            bulletinContent: payload["bulletin_content"]?.stringValue,
+            bulletinId: payload["bulletin_id"]?.intValue,
+            courseId: payload["course_id"]?.intValue,
+            courseName: payload["course_name"]?.stringValue,
+            createdAt: payload["created_at"]?.stringValue
+        )
+    }
+}
+
+nonisolated struct TronClassNotification: Sendable, Identifiable {
+    let id: String
+    let top: Bool
+    let timestamp: Int64
+    let bulletinTitle: String?
+    let bulletinContent: String?
+    let bulletinId: Int?
+    let courseId: Int?
+    let courseName: String?
+    let createdAt: String?
+
+    var date: Date {
+        Date(timeIntervalSince1970: Double(timestamp) / 1000.0)
+    }
+}
+
 // MARK: - TronClass API Errors
 
 nonisolated enum TronClassAPIError: LocalizedError {
