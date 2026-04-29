@@ -249,6 +249,66 @@ actor SISService {
         return data
     }
     
+    // MARK: - Digital Transcript
+
+    /// Step 1: Fetch available semester records for the digital transcript.
+    /// GET /Score/api/ServiceDeskDigitalDocProvider/GetAllRecordList?stuNo={stuNo}&lcId=1028
+    func getDigitalTranscriptRecords() async throws -> [DigitalTranscriptRecord] {
+        logger.info("📜 Fetching digital transcript record list...")
+        let session = try await authService.getValidSession()
+
+        var components = URLComponents(string: "\(baseURL)/Score/api/ServiceDeskDigitalDocProvider/GetAllRecordList")!
+        components.queryItems = [
+            URLQueryItem(name: "stuNo", value: session.empNo),
+            URLQueryItem(name: "lcId", value: "1028")
+        ]
+
+        guard let url = components.url else { throw SISError.invalidResponse }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
+        request.setValue("https://sis.fju.edu.tw/", forHTTPHeaderField: "Referer")
+        request.setValue("Bearer \(session.token)", forHTTPHeaderField: "Authorization")
+
+        let (data, httpResponse) = try await networkService.performRequest(request)
+        try handleHTTPError(httpResponse)
+
+        let response = try JSONDecoder().decode(DigitalTranscriptListResponse.self, from: data)
+        logger.info("✅ Got \(response.result.count, privacy: .public) digital transcript records")
+        return response.result
+    }
+
+    /// Step 2: Download the digital transcript PDF for a given semester.
+    /// GET /Score/api/ServiceDeskDigitalDocProvider/ExportSemeTranscriptFile?hy=...&ht=...&stuNo=...&lcid=1028&isRanking=...
+    func downloadDigitalTranscript(record: DigitalTranscriptRecord, includeRanking: Bool) async throws -> Data {
+        logger.info("⬇️ Downloading digital transcript for \(record.hyHtDesc, privacy: .public) ranking=\(includeRanking, privacy: .public)...")
+        let session = try await authService.getValidSession()
+
+        var components = URLComponents(string: "\(baseURL)/Score/api/ServiceDeskDigitalDocProvider/ExportSemeTranscriptFile")!
+        components.queryItems = [
+            URLQueryItem(name: "hy", value: "\(record.hy)"),
+            URLQueryItem(name: "ht", value: "\(record.ht)"),
+            URLQueryItem(name: "stuNo", value: record.stuno),
+            URLQueryItem(name: "lcid", value: "1028"),
+            URLQueryItem(name: "isRanking", value: includeRanking ? "true" : "false")
+        ]
+
+        guard let url = components.url else { throw SISError.invalidResponse }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
+        request.setValue("https://sis.fju.edu.tw/", forHTTPHeaderField: "Referer")
+        request.setValue("Bearer \(session.token)", forHTTPHeaderField: "Authorization")
+
+        let (data, httpResponse) = try await networkService.performRequest(request)
+        try handleHTTPError(httpResponse)
+
+        logger.info("✅ Transcript PDF downloaded (\(data.count, privacy: .public) bytes)")
+        return data
+    }
+
     // MARK: - Schedule
     
     func getCourseSchedule(academicYear: String, semester: Int) async throws -> CourseScheduleResponse {

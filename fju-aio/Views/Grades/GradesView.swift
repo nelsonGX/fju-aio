@@ -58,6 +58,15 @@ struct GradesView: View {
         }
         .navigationTitle("成績查詢")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                NavigationLink {
+                    DigitalTranscriptView()
+                } label: {
+                    Label("數位成績單", systemImage: "doc.text.magnifyingglass")
+                }
+            }
+        }
         .overlay {
             if isLoading {
                 ProgressView("載入中...")

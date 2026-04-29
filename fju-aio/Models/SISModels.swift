@@ -222,6 +222,28 @@ nonisolated struct AnyCodable: Codable, Sendable {
     func encode(to encoder: Encoder) throws {}
 }
 
+// MARK: - Digital Transcript Models
+
+/// Response from GET /Score/api/ServiceDeskDigitalDocProvider/GetAllRecordList
+nonisolated struct DigitalTranscriptListResponse: Codable, Sendable {
+    let statusCode: Int
+    let result: [DigitalTranscriptRecord]
+    let message: AnyCodable?
+    let errorMessage: [AnyCodable]
+}
+
+/// One semester entry available for digital transcript download
+nonisolated struct DigitalTranscriptRecord: Codable, Sendable, Identifiable, Hashable {
+    let hyHtDesc: String
+    let docTypeDesc: String
+    let hy: Int
+    let ht: Int
+    let paymentNote: String
+    let stuno: String
+
+    var id: String { "\(hy)-\(ht)" }
+}
+
 // MARK: - Leave Models (matching real exploreLink API)
 
 /// One leave record from GET /StuLeave
