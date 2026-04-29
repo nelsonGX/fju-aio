@@ -195,6 +195,77 @@ nonisolated struct OutlineWeeklyCP: Decodable, Sendable {
     let syncOnlineClassHr: Double?
 }
 
+// MARK: - Enrollment Models
+
+nonisolated struct EnrollmentsResponse: Decodable, Sendable {
+    let enrollments: [Enrollment]
+}
+
+nonisolated struct Enrollment: Decodable, Sendable, Identifiable {
+    let id: Int
+    let roles: [String]
+    let retake_status: Bool
+    let seat_number: String
+    let user: EnrollmentUser
+
+    var primaryRole: EnrollmentRole {
+        if roles.contains("instructor") { return .instructor }
+        if roles.contains("instructor_assistant") { return .ta }
+        return .student
+    }
+}
+
+nonisolated enum EnrollmentRole: Sendable {
+    case instructor
+    case ta
+    case student
+
+    var displayName: String {
+        switch self {
+        case .instructor: return "教師"
+        case .ta: return "助教"
+        case .student: return "學生"
+        }
+    }
+}
+
+nonisolated struct EnrollmentUser: Decodable, Sendable {
+    let id: Int
+    let name: String
+    let email: String
+    let user_no: String
+    let nickname: String?
+    let grade: EnrollmentNamedRef?
+    let klass: EnrollmentKlass?
+    let department: EnrollmentDepartment?
+    let org: EnrollmentNamedRef?
+}
+
+nonisolated struct EnrollmentNamedRef: Decodable, Sendable {
+    let id: Int
+    let name: String?
+}
+
+nonisolated struct EnrollmentKlass: Decodable, Sendable {
+    let id: Int
+    let name: String?
+    let code: String?
+}
+
+nonisolated struct EnrollmentDepartment: Decodable, Sendable {
+    let id: Int
+    let name: String?
+    let code: String?
+}
+
+nonisolated struct AvatarsResponse: Decodable, Sendable {
+    let avatars: [String: String] // userId string → avatar URL string
+}
+
+nonisolated struct EnrollmentEnrollmentsRequest: Encodable, Sendable {
+    let fields = "id,user(id,email,name,nickname,user_no,grade(id,name),klass(id,name,code),department(id,name,code),org(id,name)),roles,retake_status,seat_number"
+}
+
 // MARK: - TronClass API Errors
 
 nonisolated enum TronClassAPIError: LocalizedError {

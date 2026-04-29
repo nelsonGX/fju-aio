@@ -8,6 +8,10 @@ struct CourseDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("preferredMapsApp") private var preferredMapsApp = "apple"
 
+    @State private var enrollments: [Enrollment] = []
+    @State private var avatars: [String: String] = [:]
+    @State private var enrollmentsLoading = false
+
     private var matchedBuilding: CampusBuilding? {
         CampusBuildingRegistry.building(for: course.location)
     }
@@ -15,7 +19,7 @@ struct CourseDetailSheet: View {
     var body: some View {
         NavigationStack {
             List {
-                // Map section at the top — outside a Section so it has no inset padding
+                // Map section
                 if let building = matchedBuilding {
                     Section {
                         LocationMapSection(
@@ -31,6 +35,25 @@ struct CourseDetailSheet: View {
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                     }
+                }
+
+                // Enrollment preview bar — navigates to full list
+                Section {
+                    NavigationLink {
+                        EnrollmentListView(
+                            enrollments: enrollments,
+                            avatars: avatars,
+                            isLoading: enrollmentsLoading
+                        )
+                    } label: {
+                        EnrollmentPreviewBar(
+                            enrollments: enrollments,
+                            avatars: avatars,
+                            isLoading: enrollmentsLoading
+                        )
+                    }
+                } header: {
+                    Text("修課名單")
                 }
 
                 // Course info
@@ -143,6 +166,9 @@ struct CourseDetailSheet: View {
             .listStyle(.insetGrouped)
             .navigationTitle("課程資訊")
             .navigationBarTitleDisplayMode(.inline)
+            .task {
+                await loadEnrollments()
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("完成") { dismiss() }
@@ -152,6 +178,19 @@ struct CourseDetailSheet: View {
     }
 
     // MARK: - Helpers
+
+    @MainActor
+    private func loadEnrollments() async {
+        enrollmentsLoading = true
+        do {
+            let (list, avatarMap) = try await TronClassAPIService.shared.getEnrollments(courseCode: course.code)
+            enrollments = list
+            avatars = avatarMap
+        } catch {
+            // Silently ignore — preview bar shows empty state
+        }
+        enrollmentsLoading = false
+    }
 
     private func openNavApp(building: CampusBuilding) {
         if preferredMapsApp == "google", let url = googleMapsURL(building: building),
@@ -177,6 +216,365 @@ struct CourseDetailSheet: View {
         return URL(string: "comgooglemaps://?daddr=\(lat),\(lng)&directionsmode=walking&zoom=17")
     }
 }
+
+// MARK: - Enrollment Preview Bar
+
+private struct EnrollmentPreviewBar: View {
+    let enrollments: [Enrollment]
+    let avatars: [String: String]
+    let isLoading: Bool
+
+    /// Up to 5 student avatars shown in the stack
+    private var previewStudents: [Enrollment] {
+        Array(enrollments.filter { $0.primaryRole == .student }.prefix(5))
+    }
+
+    private var studentCount: Int {
+        enrollments.filter { $0.primaryRole == .student }.count
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if isLoading {
+                ProgressView()
+                    .frame(width: 44, height: 32)
+                Text("載入中...")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            } else if enrollments.isEmpty {
+                Image(systemName: "person.2")
+                    .foregroundStyle(.secondary)
+                    .frame(width: 44, height: 32)
+                Text("查看修課名單")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            } else {
+                // Overlapping avatar stack
+                OverlappingAvatarStack(
+                    enrollments: previewStudents,
+                    avatars: avatars
+                )
+
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 4) {
+                        Text("\(studentCount) 名學生")
+                            .font(.subheadline.weight(.medium))
+                        let staffCount = enrollments.filter { $0.primaryRole != .student }.count
+                        if staffCount > 0 {
+                            Text("· \(staffCount) 名教職")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    Text("點擊查看完整名單")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            Spacer()
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Overlapping Avatar Stack
+
+private struct OverlappingAvatarStack: View {
+    let enrollments: [Enrollment]
+    let avatars: [String: String]
+
+    private let size: CGFloat = 32
+    private let overlap: CGFloat = 10
+
+    var body: some View {
+        HStack(spacing: -overlap) {
+            ForEach(Array(enrollments.enumerated()), id: \.element.id) { index, enrollment in
+                SmallAvatarView(
+                    name: enrollment.user.name,
+                    url: avatars["\(enrollment.user.id)"].flatMap { URL(string: $0) },
+                    size: size
+                )
+                .zIndex(Double(enrollments.count - index))
+            }
+        }
+    }
+}
+
+// MARK: - Small Avatar View
+
+private struct SmallAvatarView: View {
+    let name: String
+    let url: URL?
+    let size: CGFloat
+
+    var body: some View {
+        AsyncImage(url: url) { phase in
+            switch phase {
+            case .success(let image):
+                image
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: size, height: size)
+                    .clipShape(Circle())
+                    .overlay(Circle().stroke(Color(uiColor: .systemBackground), lineWidth: 1.5))
+            default:
+                Circle()
+                    .fill(Color.secondary.opacity(0.25))
+                    .frame(width: size, height: size)
+                    .overlay {
+                        Text(String(name.prefix(1)))
+                            .font(.system(size: size * 0.38, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .overlay(Circle().stroke(Color(uiColor: .systemBackground), lineWidth: 1.5))
+            }
+        }
+    }
+}
+
+// MARK: - Enrollment List View
+
+struct EnrollmentListView: View {
+    let enrollments: [Enrollment]
+    let avatars: [String: String]
+    let isLoading: Bool
+
+    @State private var searchText = ""
+    @State private var selectedMember: Enrollment? = nil
+
+    private var filtered: [Enrollment] {
+        guard !searchText.isEmpty else { return enrollments }
+        let q = searchText.lowercased()
+        return enrollments.filter {
+            $0.user.name.lowercased().contains(q) ||
+            $0.user.user_no.lowercased().contains(q) ||
+            ($0.user.department?.name ?? "").lowercased().contains(q) ||
+            ($0.user.klass?.name ?? "").lowercased().contains(q)
+        }
+    }
+
+    private var instructors: [Enrollment] { filtered.filter { $0.primaryRole == .instructor } }
+    private var tas: [Enrollment] { filtered.filter { $0.primaryRole == .ta } }
+    private var students: [Enrollment] { filtered.filter { $0.primaryRole == .student } }
+
+    var body: some View {
+        List {
+            if isLoading {
+                HStack {
+                    Spacer()
+                    ProgressView()
+                    Spacer()
+                }
+                .listRowBackground(Color.clear)
+            } else if enrollments.isEmpty {
+                ContentUnavailableView("無修課名單資料", systemImage: "person.2.slash")
+            } else {
+                if !instructors.isEmpty {
+                    Section("教師") {
+                        ForEach(instructors) { enrollment in
+                            enrollmentRow(enrollment)
+                        }
+                    }
+                }
+                if !tas.isEmpty {
+                    Section("助教") {
+                        ForEach(tas) { enrollment in
+                            enrollmentRow(enrollment)
+                        }
+                    }
+                }
+                if !students.isEmpty {
+                    Section("學生 (\(students.count))") {
+                        ForEach(students) { enrollment in
+                            enrollmentRow(enrollment)
+                        }
+                    }
+                }
+                if filtered.isEmpty && !searchText.isEmpty {
+                    ContentUnavailableView.search(text: searchText)
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .navigationTitle("修課名單")
+        .navigationBarTitleDisplayMode(.large)
+        .searchable(text: $searchText, prompt: "搜尋姓名、學號、系所")
+        .sheet(item: $selectedMember) { member in
+            EnrollmentMemberDetailView(
+                enrollment: member,
+                avatarURL: avatars["\(member.user.id)"]
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func enrollmentRow(_ enrollment: Enrollment) -> some View {
+        Button {
+            selectedMember = enrollment
+        } label: {
+            HStack(spacing: 12) {
+                SmallAvatarView(
+                    name: enrollment.user.name,
+                    url: avatars["\(enrollment.user.id)"].flatMap { URL(string: $0) },
+                    size: 40
+                )
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(enrollment.user.name)
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.primary)
+                        if enrollment.primaryRole != .student {
+                            RoleBadge(role: enrollment.primaryRole)
+                        }
+                    }
+                    HStack(spacing: 4) {
+                        if !enrollment.user.user_no.isEmpty {
+                            Text(enrollment.user.user_no)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        if let klass = enrollment.user.klass?.name {
+                            Text("·")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                            Text(klass)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else if let dept = enrollment.user.department?.name {
+                            Text("·")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                            Text(dept)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                Spacer()
+
+                if enrollment.primaryRole == .student, let grade = enrollment.user.grade?.name {
+                    Text(grade)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.vertical, 2)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Member Detail View
+
+struct EnrollmentMemberDetailView: View {
+    let enrollment: Enrollment
+    let avatarURL: String?
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                // Avatar + name header
+                Section {
+                    HStack {
+                        Spacer()
+                        VStack(spacing: 10) {
+                            SmallAvatarView(
+                                name: enrollment.user.name,
+                                url: avatarURL.flatMap { URL(string: $0) },
+                                size: 80
+                            )
+                            Text(enrollment.user.name)
+                                .font(.title3.weight(.semibold))
+                            RoleBadge(role: enrollment.primaryRole)
+                        }
+                        .padding(.vertical, 8)
+                        Spacer()
+                    }
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                }
+
+                // Identity
+                Section("基本資訊") {
+                    if !enrollment.user.user_no.isEmpty {
+                        LabeledContent("學號", value: enrollment.user.user_no)
+                    }
+                    if let nickname = enrollment.user.nickname, !nickname.isEmpty {
+                        LabeledContent("暱稱", value: nickname)
+                    }
+                    LabeledContent("電子郵件", value: enrollment.user.email)
+                }
+
+                // Academic
+                let hasDept = (enrollment.user.department?.name?.isEmpty == false)
+                let hasKlass = (enrollment.user.klass?.name?.isEmpty == false)
+                let hasGrade = (enrollment.user.grade?.name?.isEmpty == false)
+                let hasOrg = (enrollment.user.org?.name?.isEmpty == false)
+
+                if hasDept || hasKlass || hasGrade || hasOrg {
+                    Section("學籍資訊") {
+                        if let org = enrollment.user.org?.name, !org.isEmpty {
+                            LabeledContent("學校", value: org)
+                        }
+                        if let dept = enrollment.user.department?.name, !dept.isEmpty {
+                            LabeledContent("系所", value: dept)
+                        }
+                        if let klass = enrollment.user.klass?.name, !klass.isEmpty {
+                            LabeledContent("班級", value: klass)
+                        }
+                        if let grade = enrollment.user.grade?.name, !grade.isEmpty {
+                            LabeledContent("年級", value: grade)
+                        }
+                    }
+                }
+
+                // Course role
+                Section("課程身份") {
+                    LabeledContent("身份", value: enrollment.primaryRole.displayName)
+                    if !enrollment.seat_number.isEmpty {
+                        LabeledContent("座位號碼", value: enrollment.seat_number)
+                    }
+                    if enrollment.retake_status {
+                        LabeledContent("重修", value: "是")
+                    }
+                }
+            }
+            .listStyle(.insetGrouped)
+            .navigationTitle("成員資訊")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("完成") { dismiss() }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Role Badge
+
+private struct RoleBadge: View {
+    let role: EnrollmentRole
+
+    var body: some View {
+        Text(role.displayName)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(role == .instructor ? Color.blue : Color.orange, in: Capsule())
+    }
+}
+
+// MARK: - Detail Text Row
 
 private struct DetailTextRow: View {
     let label: String
@@ -217,7 +615,6 @@ private struct LocationMapSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Non-interactive map preview
             Map(position: $position) {
                 Annotation(building.name, coordinate: building.coordinate, anchor: .bottom) {
                     VStack(spacing: 0) {
@@ -242,7 +639,6 @@ private struct LocationMapSection: View {
             .allowsHitTesting(false)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-            // Building name + room
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(building.name)
@@ -256,7 +652,6 @@ private struct LocationMapSection: View {
             .padding(.top, 12)
             .padding(.horizontal, 16)
 
-            // Action buttons
             if #available(iOS 26.0, *) {
                 HStack(spacing: 10) {
                     Button(action: onOpenInAppMap) {

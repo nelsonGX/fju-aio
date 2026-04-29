@@ -10,6 +10,23 @@ actor TronClassAPIService {
     private let networkService = NetworkService.shared
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.fju.aio", category: "TronClassAPI")
     
+    // MARK: - In-memory cache
+
+    private struct EnrollmentCacheEntry {
+        let enrollments: [Enrollment]
+        let avatars: [String: String]
+        let cachedAt: Date
+    }
+
+    /// Cached course list from /api/my-courses (one entry for the whole session)
+    private var myCoursesCache: [TronClassCourseSummary]? = nil
+
+    /// Per-courseCode enrollment + avatar cache
+    private var enrollmentCache: [String: EnrollmentCacheEntry] = [:]
+
+    /// How long enrollment data is considered fresh (10 minutes)
+    private let enrollmentCacheTTL: TimeInterval = 600
+
     private init() {}
     
     // MARK: - Todos
@@ -76,7 +93,80 @@ actor TronClassAPIService {
         return outlines
     }
 
+    // MARK: - Enrollments
+
+    /// Returns enrollments and avatar URLs for the TronClass course that matches the given course code.
+    /// Results are cached for `enrollmentCacheTTL` seconds so reopening the sheet is instant.
+    func getEnrollments(courseCode: String) async throws -> ([Enrollment], [String: String]) {
+        // Return cached entry if still fresh
+        if let entry = enrollmentCache[courseCode], Date().timeIntervalSince(entry.cachedAt) < enrollmentCacheTTL {
+            logger.info("📦 Returning cached enrollments for \(courseCode, privacy: .public)")
+            return (entry.enrollments, entry.avatars)
+        }
+
+        let courses = try await getMyCourses()
+        guard let match = courses.first(where: { Self.outlineLookupKeys(for: $0).contains(courseCode) ||
+            Self.outlineLookupKeys(for: $0).contains(where: { courseCode.contains($0) || $0.contains(courseCode) }) }) else {
+            return ([], [:])
+        }
+        async let enrollments = fetchEnrollments(courseId: match.id)
+        async let avatars = fetchAvatars(courseId: match.id)
+        let result = try await (enrollments, avatars)
+
+        enrollmentCache[courseCode] = EnrollmentCacheEntry(
+            enrollments: result.0,
+            avatars: result.1,
+            cachedAt: Date()
+        )
+        return result
+    }
+
+    private func fetchEnrollments(courseId: Int) async throws -> [Enrollment] {
+        let session = try await authService.getValidSession()
+
+        let url = URL(string: "\(baseURL)/api/course/\(courseId)/enrollments")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(session.sessionId, forHTTPHeaderField: "x-session-id")
+        request.setValue("session=\(session.sessionId); org.springframework.web.servlet.i18n.CookieLocaleResolver.LOCALE=zh_TW", forHTTPHeaderField: "Cookie")
+        request.setValue("application/json;charset=UTF-8", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
+        request.setValue("https://elearn2.fju.edu.tw", forHTTPHeaderField: "Origin")
+        request.setValue("https://elearn2.fju.edu.tw/course/\(courseId)/enrollments", forHTTPHeaderField: "Referer")
+        request.setValue("zh-TW,zh-Hant;q=0.9,en;q=0.8", forHTTPHeaderField: "Accept-Language")
+        request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) TronClass/common", forHTTPHeaderField: "User-Agent")
+        request.httpBody = try JSONEncoder().encode(EnrollmentEnrollmentsRequest())
+
+        let (data, httpResponse) = try await networkService.performRequest(request)
+        try handleHTTPError(httpResponse)
+
+        return try JSONDecoder().decode(EnrollmentsResponse.self, from: data).enrollments
+    }
+
+    private func fetchAvatars(courseId: Int) async throws -> [String: String] {
+        let session = try await authService.getValidSession()
+
+        let url = URL(string: "\(baseURL)/api/courses/\(courseId)/users-small-avatars")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue(session.sessionId, forHTTPHeaderField: "x-session-id")
+        request.setValue("session=\(session.sessionId); org.springframework.web.servlet.i18n.CookieLocaleResolver.LOCALE=zh_TW", forHTTPHeaderField: "Cookie")
+        request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
+        request.setValue("https://elearn2.fju.edu.tw/course/\(courseId)/enrollments", forHTTPHeaderField: "Referer")
+        request.setValue("zh-TW,zh-Hant;q=0.9,en;q=0.8", forHTTPHeaderField: "Accept-Language")
+        request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) TronClass/common", forHTTPHeaderField: "User-Agent")
+
+        let (data, httpResponse) = try await networkService.performRequest(request)
+        try handleHTTPError(httpResponse)
+
+        return try JSONDecoder().decode(AvatarsResponse.self, from: data).avatars
+    }
+
     private func getMyCourses() async throws -> [TronClassCourseSummary] {
+        if let cached = myCoursesCache {
+            return cached
+        }
+
         let session = try await authService.getValidSession()
 
         let url = URL(string: "\(baseURL)/api/my-courses")!
@@ -96,7 +186,9 @@ actor TronClassAPIService {
         let (data, httpResponse) = try await networkService.performRequest(request)
         try handleHTTPError(httpResponse)
 
-        return try JSONDecoder().decode(TronClassMyCoursesResponse.self, from: data).courses
+        let courses = try JSONDecoder().decode(TronClassMyCoursesResponse.self, from: data).courses
+        myCoursesCache = courses
+        return courses
     }
 
     private func getCourseOutlineDetails(courseId: Int) async throws -> CourseOutlineDetails? {
