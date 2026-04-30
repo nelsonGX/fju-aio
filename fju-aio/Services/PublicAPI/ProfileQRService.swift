@@ -61,6 +61,28 @@ enum ProfileQRService {
         )
     }
 
+    // MARK: - Generate Combined QR Payload (profile + credentials)
+
+    static func makeCombinedPayload(
+        userId: Int,
+        empNo: String,
+        displayName: String,
+        username: String,
+        password: String
+    ) -> CombinedQRPayload {
+        CombinedQRPayload(
+            version: 1,
+            type: "combined",
+            cloudKitRecordName: stableDeviceToken(),
+            empNo: empNo,
+            displayName: displayName,
+            userId: userId,
+            username: username,
+            password: password,
+            issuedAt: Date()
+        )
+    }
+
     // MARK: - Encode to QR Image
 
     static func generateQRImage(for payload: some Encodable, size: CGFloat = 300) -> UIImage? {
@@ -97,6 +119,10 @@ enum ProfileQRService {
             case "group_rollcall":
                 if let payload = try? JSONDecoder().decode(GroupRollcallQRPayload.self, from: data) {
                     return .groupRollcall(payload)
+                }
+            case "combined":
+                if let payload = try? JSONDecoder().decode(CombinedQRPayload.self, from: data) {
+                    return .combined(payload)
                 }
             default:
                 break

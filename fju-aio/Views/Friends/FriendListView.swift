@@ -46,6 +46,7 @@ private struct FriendListContent: View {
     @State private var lastScannedInfo: String?
     @State private var sisSession: SISSession?
     @State private var isLoadingSession = false
+    @State private var isQRButtonLoading = false
     @State private var sessionError: String?
     @AppStorage("friendList.shareCredentialQRCode") private var shareCredentialQRCode = false
 
@@ -54,18 +55,24 @@ private struct FriendListContent: View {
             // MARK: My QR Card
             Section {
                 Button {
-                    showMyQR = true
-                    if sisSession == nil {
-                        Task { await loadSession() }
-                    }
+                    guard !isQRButtonLoading else { return }
+                    Task { await openQRSheet() }
                 } label: {
                     HStack(spacing: 14) {
-                        Image(systemName: "qrcode")
-                            .font(.title2)
-                            .foregroundStyle(AppTheme.accent)
-                            .frame(width: 44, height: 44)
-                            .background(AppTheme.accent.opacity(0.12))
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(AppTheme.accent.opacity(0.12))
+                                .frame(width: 44, height: 44)
+                            if isQRButtonLoading {
+                                ProgressView()
+                                    .controlSize(.small)
+                                    .tint(AppTheme.accent)
+                            } else {
+                                Image(systemName: "qrcode")
+                                    .font(.title2)
+                                    .foregroundStyle(AppTheme.accent)
+                            }
+                        }
 
                         VStack(alignment: .leading, spacing: 2) {
                             Text("顯示我的 QR Code")
@@ -81,16 +88,9 @@ private struct FriendListContent: View {
                             .foregroundStyle(.tertiary)
                     }
                     .padding(.vertical, 4)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                
-                Toggle(isOn: $shareCredentialQRCode) {
-                    Label("分享點名授權 QR Code", systemImage: "person.badge.key.fill")
-                }
-                .foregroundStyle(shareCredentialQRCode ? .orange : .primary)
-            }
-            footer: {
-                Text(shareCredentialQRCode ? "此 QR Code 會包含你的 LDAP 帳號密碼，只能給你信任的人掃描。" : "關閉時只會分享個人公開資料 QR Code。")
             }
 
             // MARK: 你的朋友
@@ -125,7 +125,6 @@ private struct FriendListContent: View {
         }
         .navigationTitle("好友")
         .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(for: FriendRecord.self) { FriendDetailView(friend: $0) }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -152,13 +151,42 @@ private struct FriendListContent: View {
         .sheet(isPresented: $showMyQR) {
             MyProfileQRSheet(
                 session: sisSession,
-                sharesCredentials: shareCredentialQRCode,
+                sharesCredentials: $shareCredentialQRCode,
                 isLoading: isLoadingSession,
                 errorMessage: sessionError,
                 onRetry: { Task { await loadSession(force: true) } }
             )
         }
         .task { await loadSession() }
+        .refreshable { await refreshAll() }
+    }
+
+    @MainActor
+    private func openQRSheet() async {
+        isQRButtonLoading = true
+        defer { isQRButtonLoading = false }
+        // Fetch session if not already available
+        if sisSession == nil {
+            await loadSession(force: true)
+        }
+        showMyQR = true
+    }
+
+    @MainActor
+    private func refreshAll() async {
+        await loadSession(force: true)
+        // Re-fetch CloudKit profiles for all friends to get latest data
+        await withTaskGroup(of: Void.self) { group in
+            for friend in friendStore.friends {
+                group.addTask {
+                    if let profile = try? await CloudKitProfileService.shared.fetchProfile(recordName: friend.id) {
+                        await MainActor.run {
+                            self.friendStore.updateCachedProfile(profile, for: friend.id)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     @MainActor
@@ -176,10 +204,44 @@ private struct FriendListContent: View {
     }
 
     private func handleScanned(_ qrString: String) {
+        let myToken = ProfileQRService.stableDeviceToken()
         switch ProfileQRService.parse(qrString: qrString) {
         case .profile(let payload):
+            // Prevent adding yourself
+            if payload.cloudKitRecordName == myToken {
+                scanError = "這是你自己的 QR Code，無法加自己為好友。"
+                return
+            }
             friendStore.addFriend(from: payload)
             lastScannedInfo = "已新增好友：\(payload.displayName)（\(payload.empNo)）"
+            Task {
+                if let profile = try? await CloudKitProfileService.shared.fetchProfile(recordName: payload.cloudKitRecordName) {
+                    await MainActor.run {
+                        friendStore.updateCachedProfile(profile, for: payload.cloudKitRecordName)
+                    }
+                }
+            }
+        case .combined(let payload):
+            // Prevent adding yourself
+            if payload.cloudKitRecordName == myToken {
+                scanError = "這是你自己的 QR Code，無法加自己為好友。"
+                return
+            }
+            // Add as friend (using profile portion)
+            let profilePayload = ProfileQRPayload(
+                version: payload.version,
+                type: "profile",
+                cloudKitRecordName: payload.cloudKitRecordName,
+                empNo: payload.empNo,
+                displayName: payload.displayName,
+                userId: payload.userId
+            )
+            friendStore.addFriend(from: profilePayload)
+            // Also store rollcall credentials
+            if let friendId = friendStore.friends.first(where: { $0.id == payload.cloudKitRecordName })?.id {
+                friendStore.saveCredentials(for: friendId, username: payload.username, password: payload.password)
+            }
+            lastScannedInfo = "已新增好友：\(payload.displayName)（\(payload.empNo)）並儲存點名授權"
             Task {
                 if let profile = try? await CloudKitProfileService.shared.fetchProfile(recordName: payload.cloudKitRecordName) {
                     await MainActor.run {
@@ -199,7 +261,7 @@ private struct FriendListContent: View {
 
 private struct MyProfileQRSheet: View {
     let session: SISSession?
-    let sharesCredentials: Bool
+    @Binding var sharesCredentials: Bool
     let isLoading: Bool
     let errorMessage: String?
     let onRetry: () -> Void
@@ -208,9 +270,11 @@ private struct MyProfileQRSheet: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 24) {
-                Text(sharesCredentials ? "讓朋友掃描來取得點名授權" : "讓朋友掃描來加你為好友")
+                Text(sharesCredentials ? "讓朋友掃描來取得點名授權，同時可加你為好友" : "讓朋友掃描來加你為好友")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
 
                 if let session,
                    let image = makeQRImage(session: session) {
@@ -245,6 +309,13 @@ private struct MyProfileQRSheet: View {
                     }
                 }
 
+                // Share credentials toggle
+                Toggle(isOn: $sharesCredentials) {
+                    Label("包含點名授權", systemImage: "person.badge.key.fill")
+                }
+                .foregroundStyle(sharesCredentials ? .orange : .primary)
+                .padding(.horizontal)
+
                 if sharesCredentials {
                     HStack(alignment: .top, spacing: 8) {
                         Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
@@ -270,12 +341,17 @@ private struct MyProfileQRSheet: View {
     private func makeQRImage(session: SISSession) -> UIImage? {
         if sharesCredentials {
             guard let credentials = try? CredentialStore.shared.retrieveLDAPCredentials() else { return nil }
+            // Combined QR: embed both profile info and credential info
+            // We use the group_rollcall type which already carries displayName/userId,
+            // and the scanner in FriendListView also accepts profile payloads.
+            // Instead, we create a combined payload via groupRollcall (credential sharing takes priority).
             return ProfileQRService.generateQRImage(
-                for: ProfileQRService.makeGroupRollcallPayload(
-                    username: credentials.username,
-                    password: credentials.password,
+                for: ProfileQRService.makeCombinedPayload(
+                    userId: session.userId,
+                    empNo: session.empNo,
                     displayName: session.userName,
-                    userId: session.userId
+                    username: credentials.username,
+                    password: credentials.password
                 ),
                 size: 600
             )

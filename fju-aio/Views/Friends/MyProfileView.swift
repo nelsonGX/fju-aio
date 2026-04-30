@@ -15,16 +15,20 @@ struct MyProfileView: View {
 
     @State private var sisSession: SISSession?
     @State private var isLoading = false
-    @State private var isPublishing = false
-    @State private var publishError: String?
     @State private var showAddLink = false
     @State private var showDisableConfirm = false
     @State private var profileAvatarURL: URL?
     @State private var showAvatarMessage = false
 
+    // Auto-save state
+    @State private var saveTask: Task<Void, Never>?
+    @State private var publishError: String?
+
+    private let syncStatus = SyncStatusManager.shared
+
     var body: some View {
         List {
-            // MARK: Identity
+            // MARK: Identity + Preview (top)
             Section {
                 HStack(spacing: 16) {
                     ProfileAvatarView(
@@ -43,6 +47,14 @@ struct MyProfileView: View {
                     }
                 }
                 .padding(.vertical, 4)
+
+                if isPublished, let previewProfile {
+                    NavigationLink {
+                        PublicProfilePreviewView(profile: previewProfile, avatarURL: profileAvatarURL)
+                    } label: {
+                        Label("預覽公開資料", systemImage: "eye.fill")
+                    }
+                }
             } header: {
                 Text("身份")
             } footer: {
@@ -55,8 +67,8 @@ struct MyProfileView: View {
                     get: { isPublished },
                     set: { newValue in
                         if newValue {
-                            // Enable — will publish on next save
                             isPublished = true
+                            scheduleSave()
                         } else {
                             showDisableConfirm = true
                         }
@@ -81,15 +93,8 @@ struct MyProfileView: View {
             if isPublished {
                 Section {
                     Toggle("公開我的課表", isOn: $shareSchedule)
-                    if let previewProfile {
-                        NavigationLink {
-                            PublicProfilePreviewView(profile: previewProfile, avatarURL: profileAvatarURL)
-                        } label: {
-                            Label("預覽公開資料", systemImage: "eye.fill")
-                        }
-                    }
                 } footer: {
-                    Text("變更公開課表設定後，請點「發布 / 更新」同步到雲端。")
+                    Text("變更後將自動同步到雲端。")
                 }
 
                 // Bio
@@ -106,6 +111,7 @@ struct MyProfileView: View {
                     .onDelete { offsets in
                         socialLinks.remove(atOffsets: offsets)
                         saveSocialLinks()
+                        scheduleSave()
                     }
 
                     Button {
@@ -115,37 +121,15 @@ struct MyProfileView: View {
                     }
                 } header: {
                     Text("社群連結")
-                } footer: {
-                    Text("新增後請記得點「發布」來更新雲端資料。")
                 }
 
-                // Publish button
-                Section {
-                    Button {
-                        Task { await publishProfile() }
-                    } label: {
-                        HStack {
-                            if isPublishing {
-                                ProgressView().controlSize(.small)
-                                Text("發布中...")
-                            } else {
-                                Image(systemName: "cloud.fill")
-                                Text("發布 / 更新")
-                            }
-                        }
-                        .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(isPublishing || sisSession == nil)
-                    .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
-
-                    if let error = publishError {
+                if let error = publishError {
+                    Section {
                         Text(error)
                             .font(.caption)
                             .foregroundStyle(.red)
                     }
                 }
-
             }
         }
         .navigationTitle("我的資料")
@@ -158,11 +142,24 @@ struct MyProfileView: View {
             loadSocialLinks()
             await loadProfileAvatar()
         }
-        .onChange(of: socialLinks) { _, _ in saveSocialLinks() }
+        .onDisappear {
+            // Flush any pending debounced save immediately on navigate-away
+            saveTask?.cancel()
+            if isPublished, sisSession != nil {
+                Task { await publishProfileNow() }
+            }
+        }
+        .onChange(of: bio) { _, _ in scheduleSave() }
+        .onChange(of: shareSchedule) { _, _ in scheduleSave() }
+        .onChange(of: socialLinks) { _, _ in
+            saveSocialLinks()
+            scheduleSave()
+        }
         .sheet(isPresented: $showAddLink) {
             AddSocialLinkSheet { newLink in
                 socialLinks.append(newLink)
                 saveSocialLinks()
+                scheduleSave()
             }
         }
         .confirmationDialog(
@@ -222,33 +219,45 @@ struct MyProfileView: View {
         }
     }
 
-    // MARK: - Publish
+    // MARK: - Auto-save (debounced)
 
-    private func publishProfile() async {
-        guard let session = sisSession else { return }
-        isPublishing = true
+    /// Schedule a debounced save 0.8 s after the last change.
+    private func scheduleSave() {
+        guard isPublished, sisSession != nil else { return }
+        saveTask?.cancel()
+        saveTask = Task {
+            try? await Task.sleep(for: .milliseconds(800))
+            guard !Task.isCancelled else { return }
+            await publishProfileNow()
+        }
+    }
+
+    @MainActor
+    private func publishProfileNow() async {
+        guard let session = sisSession, isPublished else { return }
         publishError = nil
-        defer { isPublishing = false }
 
-        let effectiveName = displayName.isEmpty ? session.userName : displayName
-        let snapshot = shareSchedule ? buildSnapshot(session: session) : nil
+        await syncStatus.withSync("儲存中...") {
+            let effectiveName = displayName.isEmpty ? session.userName : displayName
+            let snapshot = shareSchedule ? buildSnapshot(session: session) : nil
 
-        let profile = PublicProfile(
-            cloudKitRecordName: ProfileQRService.stableDeviceToken(),
-            userId: session.userId,
-            empNo: session.empNo,
-            displayName: effectiveName,
-            bio: bio.isEmpty ? nil : bio,
-            socialLinks: socialLinks,
-            scheduleSnapshot: snapshot,
-            lastUpdated: Date()
-        )
+            let profile = PublicProfile(
+                cloudKitRecordName: ProfileQRService.stableDeviceToken(),
+                userId: session.userId,
+                empNo: session.empNo,
+                displayName: effectiveName,
+                bio: bio.isEmpty ? nil : bio,
+                socialLinks: socialLinks,
+                scheduleSnapshot: snapshot,
+                lastUpdated: Date()
+            )
 
-        do {
-            try await CloudKitProfileService.shared.publishProfile(profile)
-            isPublished = true
-        } catch {
-            publishError = "發布失敗：\(error.localizedDescription)"
+            do {
+                try await CloudKitProfileService.shared.publishProfile(profile)
+                isPublished = true
+            } catch {
+                publishError = "儲存失敗：\(error.localizedDescription)"
+            }
         }
     }
 
@@ -376,122 +385,6 @@ private struct AddSocialLinkSheet: View {
                 }
             }
         }
-    }
-}
-
-// MARK: - Profile QR Sheet
-
-private struct ProfileQRSheet: View {
-    let session: SISSession
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: 24) {
-                Text("讓朋友掃描來加你為好友")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-
-                if let image = makeQRImage() {
-                    Image(uiImage: image)
-                        .interpolation(.none)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 240, height: 240)
-                        .padding()
-                        .background(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
-                        .shadow(radius: 8)
-                }
-
-                VStack(spacing: 4) {
-                    Text(session.userName).font(.headline)
-                    Text(session.empNo).font(.subheadline).foregroundStyle(.secondary)
-                }
-
-                Spacer()
-            }
-            .padding(.top, 32)
-            .navigationTitle("個人 QR Code")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("關閉") { dismiss() } }
-            }
-        }
-    }
-
-    private func makeQRImage() -> UIImage? {
-        ProfileQRService.generateQRImage(
-            for: ProfileQRService.makeProfilePayload(
-                userId: session.userId,
-                empNo: session.empNo,
-                displayName: session.userName
-            ),
-            size: 600
-        )
-    }
-}
-
-// MARK: - Rollcall Credential QR Sheet
-
-private struct RollcallCredentialQRSheet: View {
-    let session: SISSession
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: 20) {
-                HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                    Text("注意：這個 QR Code 含有你的帳號密碼，請不要隨意外洩。一旦分享，只有更改 LDAP 帳密才可以停止。")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                }
-                .padding(12)
-                .background(.orange.opacity(0.1))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .padding(.horizontal)
-
-                if let image = makeQRImage() {
-                    Image(uiImage: image)
-                        .interpolation(.none)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 240, height: 240)
-                        .padding()
-                        .background(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
-                        .shadow(radius: 8)
-                }
-
-                Text("讓群組成員掃描此 QR Code 後，他們可以為你自動點名")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
-
-                Spacer()
-            }
-            .padding(.top, 24)
-            .navigationTitle("點名 QR Code")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("關閉") { dismiss() } }
-            }
-        }
-    }
-
-    private func makeQRImage() -> UIImage? {
-        guard let credentials = try? CredentialStore.shared.retrieveLDAPCredentials() else { return nil }
-        return ProfileQRService.generateQRImage(
-            for: ProfileQRService.makeGroupRollcallPayload(
-                username: credentials.username,
-                password: credentials.password,
-                displayName: session.userName,
-                userId: session.userId
-            ),
-            size: 600
-        )
     }
 }
 

@@ -223,6 +223,22 @@ struct GroupRollcallQRPayload: Codable, Sendable {
     let issuedAt: Date
 }
 
+// MARK: - Combined QR Payload
+// Carries both profile info and LDAP credentials in a single QR code.
+// Scanning this adds the person as a friend AND stores rollcall credentials.
+
+struct CombinedQRPayload: Codable, Sendable {
+    let version: Int
+    let type: String                // "combined"
+    let cloudKitRecordName: String
+    let empNo: String
+    let displayName: String
+    let userId: Int
+    let username: String
+    let password: String
+    let issuedAt: Date
+}
+
 // MARK: - Profile QR Payload
 
 struct ProfileQRPayload: Codable, Sendable {
@@ -239,5 +255,6 @@ struct ProfileQRPayload: Codable, Sendable {
 enum ScannedQRType {
     case profile(ProfileQRPayload)
     case groupRollcall(GroupRollcallQRPayload)
+    case combined(CombinedQRPayload)
     case unknown(String)
 }

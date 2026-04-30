@@ -39,14 +39,18 @@ struct FriendDetailView: View {
                         Text(friend.empNo)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
-                        if let bio = profile?.bio, !bio.isEmpty {
-                            Text(bio)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
                     }
                 }
                 .padding(.vertical, 4)
+            }
+
+            // MARK: Bio (standalone section)
+            if let bio = profile?.bio, !bio.isEmpty {
+                Section("自我介紹") {
+                    Text(bio)
+                        .font(.subheadline)
+                        .foregroundStyle(.primary)
+                }
             }
 
             // MARK: Social Links (dynamic)
@@ -144,15 +148,15 @@ struct FriendDetailView: View {
         .task { await loadProfile() }
         .refreshable { await loadProfile() }
         .sheet(isPresented: $showCredentialScanner) {
-            CredentialScannerSheet { payload in
+            CredentialScannerSheet(friend: currentFriend) { userId, displayName, username, password in
                 showCredentialScanner = false
-                if payload.sharerUserId == (currentFriend.cachedProfile?.userId ?? -1) ||
-                   payload.username == currentFriend.empNo ||
-                   payload.sharerDisplayName == currentFriend.displayName {
+                if userId == (currentFriend.cachedProfile?.userId ?? -1) ||
+                   username == currentFriend.empNo ||
+                   displayName == currentFriend.displayName {
                     friendStore.saveCredentials(
                         for: currentFriend.id,
-                        username: payload.username,
-                        password: payload.password
+                        username: username,
+                        password: password
                     )
                 } else {
                     credentialScanError = "此 QR Code 不屬於 \(currentFriend.displayName)，請讓對方重新顯示。"
@@ -204,12 +208,11 @@ struct FriendDetailView: View {
 
 private struct SocialLinkRow: View {
     let link: SocialLink
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: link.platform.icon)
-                .foregroundStyle(Color(hex: link.platform.color))
-                .frame(width: 28)
+        let content = HStack(spacing: 12) {
+            SocialBrandIcon(platform: link.platform)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(link.platform.label)
@@ -222,15 +225,16 @@ private struct SocialLinkRow: View {
             Spacer()
 
             if link.resolvedURL != nil {
-                Image(systemName: "arrow.up.right.square")
-                    .foregroundStyle(.secondary)
+                Image(systemName: "arrow.up.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
             }
         }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            if let url = link.resolvedURL {
-                UIApplication.shared.open(url)
-            }
+
+        if let url = link.resolvedURL {
+            Link(destination: url) { content }
+        } else {
+            content
         }
     }
 }
@@ -262,9 +266,12 @@ private struct FriendCourseRow: View {
 
 
 // MARK: - Credential Scanner Sheet
+// Accepts both group_rollcall and combined QR codes
 
 private struct CredentialScannerSheet: View {
-    let onScanned: (GroupRollcallQRPayload) -> Void
+    let friend: FriendRecord
+    /// Callback: (sharerUserId, sharerDisplayName, username, password)
+    let onScanned: (Int, String, String, String) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var scanError: String?
 
@@ -274,9 +281,11 @@ private struct CredentialScannerSheet: View {
                 QRScannerView { qrString in
                     switch ProfileQRService.parse(qrString: qrString) {
                     case .groupRollcall(let payload):
-                        onScanned(payload)
+                        onScanned(payload.sharerUserId, payload.sharerDisplayName, payload.username, payload.password)
+                    case .combined(let payload):
+                        onScanned(payload.userId, payload.displayName, payload.username, payload.password)
                     case .profile:
-                        scanError = "這是個人 QR Code，請讓對方顯示「點名 QR Code」"
+                        scanError = "這是個人 QR Code，請讓對方開啟「包含點名授權」選項後再顯示 QR Code"
                     case .unknown:
                         scanError = "無法識別此 QR Code"
                     }

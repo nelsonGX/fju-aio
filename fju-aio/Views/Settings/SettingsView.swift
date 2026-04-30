@@ -19,47 +19,36 @@ struct SettingsView: View {
     var body: some View {
         List {
             Section("帳號") {
-                HStack {
-                    ProfileAvatarView(
-                        name: sisSession?.userName ?? "學生姓名",
-                        avatarURL: profileAvatarURL,
-                        size: 52
-                    )
-                    .onTapGesture { showAvatarMessage = true }
-
-                    VStack(alignment: .leading) {
-                        Text(sisSession?.userName ?? "學生姓名")
-                            .font(.headline)
-                        Text(sisSession?.empNo ?? "410XXXXXX")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    if isLoadingSession {
-                        Spacer()
-                        ProgressView()
-                            .controlSize(.small)
-                    }
-                }
-
                 NavigationLink(destination: MyProfileView()) {
                     HStack {
-                        Image(systemName: "person.crop.square.fill")
-                        Text("我的公開資料")
+                        ProfileAvatarView(
+                            name: sisSession?.userName ?? "學生姓名",
+                            avatarURL: profileAvatarURL,
+                            size: 52
+                        )
+                        .onTapGesture { showAvatarMessage = true }
+
+                        VStack(alignment: .leading) {
+                            Text(sisSession?.userName ?? "學生姓名")
+                                .font(.headline)
+                            Text(sisSession?.empNo ?? "410XXXXXX")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        if isLoadingSession {
+                            Spacer()
+                            ProgressView()
+                                .controlSize(.small)
+                        }
                     }
                 }
+            }
 
+            // MARK: 好友（standalone, no title）
+            Section {
                 NavigationLink(destination: FriendListView()) {
                     SettingsFriendRow(friendCount: friendStore.friends.count)
-                }
-
-                Button(role: .destructive) {
-                    showLogoutAlert = true
-                } label: {
-                    HStack {
-                        Image(systemName: "rectangle.portrait.and.arrow.right")
-                        Text("登出")
-                    }
                 }
             }
 
@@ -130,6 +119,19 @@ struct SettingsView: View {
                     if versionTapCount >= 5 {
                         showDebugScreen = true
                         versionTapCount = 0
+                    }
+                }
+            }
+
+            Section {
+                Button(role: .destructive) {
+                    showLogoutAlert = true
+                } label: {
+                    HStack {
+                        Spacer()
+                        Image(systemName: "rectangle.portrait.and.arrow.right")
+                        Text("登出")
+                        Spacer()
                     }
                 }
             }

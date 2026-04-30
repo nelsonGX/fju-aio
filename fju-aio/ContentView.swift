@@ -39,6 +39,7 @@ struct ContentView: View {
                         .navigationDestination(for: AppDestination.self) { destination in
                             destinationView(for: destination)
                         }
+                        .navigationDestination(for: FriendRecord.self) { FriendDetailView(friend: $0) }
                 }
             }
 
@@ -48,12 +49,14 @@ struct ContentView: View {
                         .navigationDestination(for: AppDestination.self) { destination in
                             destinationView(for: destination)
                         }
+                        .navigationDestination(for: FriendRecord.self) { FriendDetailView(friend: $0) }
                 }
             }
 
             Tab("設定", systemImage: "gearshape.fill", value: .settings) {
                 NavigationStack {
                     SettingsView()
+                        .navigationDestination(for: FriendRecord.self) { FriendDetailView(friend: $0) }
                 }
             }
         }
