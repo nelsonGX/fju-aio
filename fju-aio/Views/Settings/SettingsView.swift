@@ -1,5 +1,6 @@
 import SwiftUI
 import ActivityKit
+import EventKit
 
 struct SettingsView: View {
     @Environment(AuthenticationManager.self) private var authManager
@@ -238,7 +239,10 @@ struct DebugView: View {
     @State private var hasStoredCredentials = false
     @State private var sessionLoadError: String?
     @State private var notificationLog: [String] = []
-    
+    @State private var showDeleteFJUCalendarConfirm = false
+    @State private var deleteCalendarResult: String?
+    private let debugEventStore = EKEventStore()
+
     var body: some View {
         List {
             Section("系統資訊") {
@@ -696,6 +700,17 @@ struct DebugView: View {
                 }
             }
 
+            Section("行事曆（除錯）") {
+                if let result = deleteCalendarResult {
+                    Text(result)
+                        .font(.caption)
+                        .foregroundStyle(result.hasPrefix("✅") ? .green : .red)
+                }
+                Button("刪除「輔大行事曆」所有事件", role: .destructive) {
+                    showDeleteFJUCalendarConfirm = true
+                }
+            }
+
             Section("Onboarding") {
                 Button("重新顯示 Onboarding") {
                     showOnboarding = true
@@ -708,6 +723,12 @@ struct DebugView: View {
         }
         .navigationTitle("除錯資訊")
         .navigationBarTitleDisplayMode(.inline)
+        .confirmationDialog("將從「輔大行事曆」及預設行事曆中刪除所有與學期行事曆相符的事件", isPresented: $showDeleteFJUCalendarConfirm, titleVisibility: .visible) {
+            Button("刪除相符事件", role: .destructive) {
+                deleteFJUCalendarEvents()
+            }
+            Button("取消", role: .cancel) {}
+        }
         .sheet(isPresented: $showOnboarding) {
             OnboardingView()
         }
@@ -726,6 +747,53 @@ struct DebugView: View {
         }
     }
     
+    private func deleteFJUCalendarEvents() {
+        Task {
+            do {
+                let granted = try await debugEventStore.requestFullAccessToEvents()
+                guard granted else {
+                    await MainActor.run { deleteCalendarResult = "❌ 無法存取行事曆" }
+                    return
+                }
+                let fjuName = "輔大行事曆"
+                // Search both the dedicated FJU calendar and the default calendar
+                var searchCalendars: [EKCalendar] = []
+                if let fjuCal = debugEventStore.calendars(for: .event).first(where: { $0.title == fjuName }) {
+                    searchCalendars.append(fjuCal)
+                }
+                if let defaultCal = debugEventStore.defaultCalendarForNewEvents,
+                   !searchCalendars.contains(where: { $0.calendarIdentifier == defaultCal.calendarIdentifier }) {
+                    searchCalendars.append(defaultCal)
+                }
+                guard !searchCalendars.isEmpty else {
+                    await MainActor.run { deleteCalendarResult = "❌ 找不到可搜尋的行事曆" }
+                    return
+                }
+                // Load all known school event titles to match against
+                let knownTitles = Set(calendarEvents.map { $0.title })
+                guard !knownTitles.isEmpty else {
+                    await MainActor.run { deleteCalendarResult = "❌ 沒有已載入的行事曆資料可比對，請先回到行事曆頁面載入資料" }
+                    return
+                }
+                let start = Calendar.current.date(byAdding: .year, value: -2, to: Date()) ?? Date()
+                let end = Calendar.current.date(byAdding: .year, value: 3, to: Date()) ?? Date()
+                let predicate = debugEventStore.predicateForEvents(withStart: start, end: end, calendars: searchCalendars)
+                let eventsToDelete = debugEventStore.events(matching: predicate).filter { knownTitles.contains($0.title) }
+                for event in eventsToDelete {
+                    try debugEventStore.remove(event, span: .thisEvent, commit: false)
+                }
+                try debugEventStore.commit()
+                await MainActor.run {
+                    deleteCalendarResult = "✅ 已刪除 \(eventsToDelete.count) 個輔大行事曆事件"
+                }
+            } catch {
+                await MainActor.run {
+                    deleteCalendarResult = "❌ \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
     private func decodeJWTPayload(_ token: String) -> String? {
         let segments = token.components(separatedBy: ".")
         guard segments.count == 3 else { return nil }
