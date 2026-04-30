@@ -37,6 +37,8 @@
 	<array>
 		<string>comgooglemaps</string>
 	</array>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>用於將學期行事曆事件加入您的行事曆</string>
 	<key>NSCameraUsageDescription</key>
 	<string>用於掃描 QR Code 以進行課程點名</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
