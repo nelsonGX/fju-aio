@@ -192,12 +192,22 @@ struct CourseDetailSheet: View {
 
     @MainActor
     private func loadEnrollments() async {
-        enrollmentsLoading = true
+        var hasCachedEnrollments = false
+        if let cached = await TronClassAPIService.shared.cachedEnrollments(courseCode: course.code) {
+            enrollments = cached.0
+            avatars = cached.1
+            hasCachedEnrollments = !cached.0.isEmpty
+            loadCachedPublicProfiles(for: cached.0)
+        }
+
+        enrollmentsLoading = !hasCachedEnrollments
         do {
             let (list, avatarMap) = try await TronClassAPIService.shared.getEnrollments(courseCode: course.code)
             enrollments = list
             avatars = avatarMap
-            await loadPublicProfiles(for: list)
+            enrollmentsLoading = false
+            loadCachedPublicProfiles(for: list)
+            await refreshPublicProfiles(for: list)
         } catch {
             // Silently ignore — preview bar shows empty state
         }
@@ -205,7 +215,7 @@ struct CourseDetailSheet: View {
     }
 
     @MainActor
-    private func loadPublicProfiles(for enrollments: [Enrollment]) async {
+    private func loadCachedPublicProfiles(for enrollments: [Enrollment]) {
         let studentEmpNos = enrollments
             .filter { $0.primaryRole == .student }
             .map(\.user.user_no)
@@ -215,6 +225,16 @@ struct CourseDetailSheet: View {
         if !cached.isEmpty {
             publicProfilesByEmpNo = cached
         }
+    }
+
+    @MainActor
+    private func refreshPublicProfiles(for enrollments: [Enrollment]) async {
+        let studentEmpNos = enrollments
+            .filter { $0.primaryRole == .student }
+            .map(\.user.user_no)
+            .filter { !$0.isEmpty }
+
+        let cached = PublicProfileCache.shared.profiles(for: studentEmpNos)
 
         do {
             var profiles = try await CloudKitProfileService.shared.fetchProfiles(empNos: studentEmpNos)
@@ -294,7 +314,7 @@ private struct EnrollmentPreviewBar: View {
                     HStack(spacing: 4) {
                         Text("\(studentCount) 名學生").font(.subheadline.weight(.medium))
                         if friendCount > 0 {
-                            Label("\(friendCount) 位朋友", systemImage: "person.2.fill")
+                            Text(" · \(friendCount) 位朋友")
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(AppTheme.accent)
                         }
@@ -547,16 +567,6 @@ struct EnrollmentMemberDetailView: View {
                 }
 
                 if let publicProfile {
-                    Section("公開資料") {
-                        NavigationLink {
-                            PublicProfilePreviewView(
-                                profile: publicProfile,
-                                avatarURL: avatarURL.flatMap { URL(string: $0) }
-                            )
-                        } label: {
-                            Label("查看公開資料", systemImage: "person.crop.circle")
-                        }
-                    }
                     PublicProfileInfoSections(profile: publicProfile)
                 }
 
@@ -612,11 +622,6 @@ struct EnrollmentMemberDetailView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("完成") { dismiss() }
                 }
-            }
-            .alert("頭貼", isPresented: $showAvatarMessage) {
-                Button("確定", role: .cancel) {}
-            } message: {
-                Text("請前往 TronClass 更改這個頭貼")
             }
         }
     }

@@ -147,7 +147,7 @@ actor TronClassAPIService {
     /// Results are cached for `enrollmentCacheTTL` seconds so reopening the sheet is instant.
     func getEnrollments(courseCode: String) async throws -> ([Enrollment], [String: String]) {
         // Return cached entry if still fresh
-        if let entry = enrollmentCache[courseCode], Date().timeIntervalSince(entry.cachedAt) < enrollmentCacheTTL {
+        if let entry = cachedEnrollmentEntry(courseCode: courseCode) {
             logger.info("📦 Returning cached enrollments for \(courseCode, privacy: .public)")
             return (entry.enrollments, entry.avatars)
         }
@@ -167,6 +167,19 @@ actor TronClassAPIService {
             cachedAt: Date()
         )
         return result
+    }
+
+    func cachedEnrollments(courseCode: String) -> ([Enrollment], [String: String])? {
+        guard let entry = cachedEnrollmentEntry(courseCode: courseCode) else { return nil }
+        return (entry.enrollments, entry.avatars)
+    }
+
+    private func cachedEnrollmentEntry(courseCode: String) -> EnrollmentCacheEntry? {
+        guard let entry = enrollmentCache[courseCode],
+              Date().timeIntervalSince(entry.cachedAt) < enrollmentCacheTTL else {
+            return nil
+        }
+        return entry
     }
 
     func getCurrentUserAvatarURL() async throws -> String? {
