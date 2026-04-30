@@ -14,11 +14,11 @@ enum ModuleRegistry {
         AppModule(id: "grades", name: "看成績", icon: "chart.bar.fill",
                   color: .green, category: .academic, type: .inApp(.grades)),
         AppModule(id: "leaveRequest", name: "請假申請", icon: "doc.text.fill",
-                  color: .purple, category: .academic, type: .inApp(.leaveRequest)),
+                  color: AppTheme.accent, category: .academic, type: .inApp(.leaveRequest)),
         AppModule(id: "attendance", name: "出缺席查詢", icon: "checkmark.circle.fill",
                   color: .teal, category: .academic, type: .inApp(.attendance)),
         AppModule(id: "checkIn", name: "課程簽到", icon: "hand.raised.fill",
-                  color: .pink, category: .academic, type: .inApp(.checkIn), isHidden: true),
+                  color: AppTheme.accent, category: .academic, type: .inApp(.checkIn), isHidden: true),
         AppModule(id: "enrollmentCertificate", name: "在學證明", icon: "doc.richtext.fill",
                   color: .orange, category: .academic, type: .inApp(.enrollmentCertificate)),
 
@@ -26,7 +26,7 @@ enum ModuleRegistry {
         AppModule(id: "semesterCalendar", name: "學期行事曆", icon: "calendar.badge.clock",
                   color: .red, category: .tools, type: .inApp(.semesterCalendar)),
         AppModule(id: "assignments", name: "作業 Todo", icon: "checklist",
-                  color: .indigo, category: .tools, type: .inApp(.assignments)),
+                  color: .cyan, category: .tools, type: .inApp(.assignments)),
 
         // Web links (academic)
         AppModule(id: "webTronClass", name: "TronClass", icon: "laptopcomputer",

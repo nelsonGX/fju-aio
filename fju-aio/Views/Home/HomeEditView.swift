@@ -25,14 +25,7 @@ struct HomeEditView: View {
 
                                     Spacer()
 
-                                    Image(systemName: preferences.isSelected(module.id)
-                                          ? "checkmark.circle.fill"
-                                          : "circle")
-                                        .foregroundStyle(
-                                            preferences.isSelected(module.id)
-                                            ? Color.accentColor : .gray
-                                        )
-                                        .font(.title3)
+                                    selectionIndicator(for: module)
                                 }
                             }
                         }
@@ -51,6 +44,23 @@ struct HomeEditView: View {
                     }
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func selectionIndicator(for module: AppModule) -> some View {
+        if let index = preferences.selectedModuleIDs.firstIndex(of: module.id) {
+            Text("\(index + 1)")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.white)
+                .frame(width: 24, height: 24)
+                .background(AppTheme.accent, in: Circle())
+                .accessibilityLabel("已選擇，第 \(index + 1) 個")
+        } else {
+            Image(systemName: "circle")
+                .font(.title3)
+                .foregroundStyle(.gray)
+                .accessibilityLabel("未選擇")
         }
     }
 }

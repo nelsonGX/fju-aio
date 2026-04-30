@@ -949,7 +949,7 @@ struct CheckInTestView: View {
                         Button { showManualEntry = true } label: {
                             Label("輸入數字碼", systemImage: "keyboard").frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.borderedProminent).tint(.pink)
+                        .buttonStyle(.borderedProminent).tint(AppTheme.accent)
                     }
 
                     if result != nil {

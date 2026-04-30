@@ -45,7 +45,7 @@ struct CalendarEventRow: View {
         case .exam: return .red
         case .holiday: return .green
         case .registration: return .blue
-        case .activity: return .purple
+        case .activity: return AppTheme.accent
         case .deadline: return .orange
         }
     }

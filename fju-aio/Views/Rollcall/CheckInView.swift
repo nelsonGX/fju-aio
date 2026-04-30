@@ -234,12 +234,12 @@ private struct RollcallRowView: View {
                     Button(action: onManualEntry) {
                         Label("輸入數字碼", systemImage: "keyboard").frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent).tint(.pink)
+                    .buttonStyle(.borderedProminent).tint(AppTheme.accent)
                 } else if rollcall.isQR {
                     Button(action: onQRCheckIn) {
                         Label("掃描 QR Code", systemImage: "qrcode.viewfinder").frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent).tint(.purple)
+                    .buttonStyle(.borderedProminent).tint(AppTheme.accent)
                 } else if rollcall.isRadar {
                     Button(action: onRadarCheckIn) {
                         Label("雷達簽到", systemImage: "location.fill").frame(maxWidth: .infinity)
@@ -442,7 +442,7 @@ struct ManualCheckInSheet: View {
                 } label: {
                     Text("確認簽到").frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent).tint(.pink)
+                .buttonStyle(.borderedProminent).tint(AppTheme.accent)
                 .disabled(code.count != 4).padding(.horizontal)
 
                 Spacer()

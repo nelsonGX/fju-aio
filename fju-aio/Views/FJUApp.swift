@@ -12,22 +12,25 @@ struct FJUApp: App {
 
     var body: some Scene {
         WindowGroup {
-            if authManager.isAuthenticated {
-                if hasCompletedOnboarding {
-                    ContentView()
-                        .environment(\.fjuService, FJUService.shared)
-                        .environment(HomePreferences())
-                        .environment(authManager)
-                        .environment(syncStatus)
+            Group {
+                if authManager.isAuthenticated {
+                    if hasCompletedOnboarding {
+                        ContentView()
+                            .environment(\.fjuService, FJUService.shared)
+                            .environment(HomePreferences())
+                            .environment(authManager)
+                            .environment(syncStatus)
+                    } else {
+                        OnboardingView()
+                            .environment(authManager)
+                            .environment(syncStatus)
+                    }
                 } else {
-                    OnboardingView()
+                    LoginView()
                         .environment(authManager)
-                        .environment(syncStatus)
                 }
-            } else {
-                LoginView()
-                    .environment(authManager)
             }
+            .tint(AppTheme.accent)
         }
     }
 }

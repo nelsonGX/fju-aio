@@ -6,8 +6,8 @@ enum AppTheme {
 
     // MARK: - Color
 
-    /// Single brand accent used throughout the app — indigo
-    static let accent = Color.indigo
+    /// Single brand accent used throughout the app.
+    static let accent = Color.accentColor
 
     // MARK: - Spacing & Shape
 

@@ -8,6 +8,7 @@ struct fju_aioApp: App {
             ContentView()
                 .environment(\.fjuService, MockFJUService())
                 .environment(homePreferences)
+                .tint(AppTheme.accent)
         }
     }
 }

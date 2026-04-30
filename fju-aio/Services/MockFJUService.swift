@@ -14,7 +14,7 @@ final class MockFJUService: FJUServiceProtocol, @unchecked Sendable {
             Course(id: "MATH2001", name: "線性代數", instructor: "陳志明",
                    location: "理圖 LM305", dayOfWeek: 3, startPeriod: 1, endPeriod: 2, color: "#50C878"),
             Course(id: "CSIE3001", name: "作業系統", instructor: "張文傑",
-                   location: "理圖 SF435", dayOfWeek: 1, startPeriod: 6, endPeriod: 7, color: "#9B59B6"),
+                   location: "理圖 SF435", dayOfWeek: 1, startPeriod: 6, endPeriod: 7, color: "#38BDF8"),
             Course(id: "CHIN1001", name: "大學國文", instructor: "林淑芬",
                    location: "文華樓 LB302", dayOfWeek: 4, startPeriod: 3, endPeriod: 4, color: "#F39C12"),
             Course(id: "CSIE2008", name: "演算法", instructor: "黃建華",
