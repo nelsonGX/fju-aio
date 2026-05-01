@@ -74,6 +74,7 @@ final class AuthenticationManager {
             try await sisAuthService.logout()
             try await estuAuthService.logout()
             AppCacheCleanupService.clearForLogout()
+            UserDefaults.standard.set(false, forKey: "hasCompletedOnboarding")
             isAuthenticated = false
             currentUserId = nil
             logger.info("✅ Logout successful")

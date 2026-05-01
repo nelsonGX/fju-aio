@@ -142,6 +142,7 @@
 				52D5DFF12F693F22002EE05C /* Frameworks */,
 				52D5DFF22F693F22002EE05C /* Resources */,
 				52FB82C32F9ED94100BC5EAE /* Embed Foundation Extensions */,
+				529878C02FA4AD1A00353571 /* Inject Git Commit Hash */,
 			);
 			buildRules = (
 			);
@@ -236,6 +237,28 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		529878C02FA4AD1A00353571 /* Inject Git Commit Hash */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Inject Git Commit Hash";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Type a script or drag a script file from your workspace to insert its path.\nHASH=$(git -C \"$SRCROOT\" rev-parse --short=8 HEAD 2>/dev/null || echo \"unknown\")\n   /usr/libexec/PlistBuddy -c \"Set :GitCommitHash $HASH\" \"$BUILT_PRODUCTS_DIR/$INFOPLIST_PATH\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		52D5DFF02F693F22002EE05C /* Sources */ = {

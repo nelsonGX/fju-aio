@@ -14,52 +14,84 @@ final class CourseNotificationManager {
     static let shared = CourseNotificationManager()
 
     private init() {
+        // Load persisted values into stored properties so @Observable can track them
+        _isEnabled = UserDefaults.standard.object(forKey: Keys.enabled) as? Bool ?? true
+        _notifyBefore = UserDefaults.standard.object(forKey: Keys.notifyBefore) as? Bool ?? true
+        _notifyStart = UserDefaults.standard.object(forKey: Keys.notifyStart) as? Bool ?? true
+        _notifyEnd = UserDefaults.standard.object(forKey: Keys.notifyEnd) as? Bool ?? true
+        let saved = UserDefaults.standard.integer(forKey: Keys.minutesBefore)
+        _minutesBefore = saved == 0 ? 15 : saved
         observePushToStartTokens()
         observeActivityUpdates()
     }
 
     // MARK: - Persisted Preferences
+    // Stored properties so @Observable macro can track changes and drive SwiftUI updates.
+    // Each setter also persists to UserDefaults and triggers a server re-sync.
 
     /// Master switch for Live Activities.
     var isEnabled: Bool {
-        get { UserDefaults.standard.object(forKey: Keys.enabled) as? Bool ?? true }
+        get { _isEnabled }
         set {
+            _isEnabled = newValue
             UserDefaults.standard.set(newValue, forKey: Keys.enabled)
             if !newValue {
                 Task {
                     await endAllLiveActivities()
                     await cancelRemoteSchedules(deactivateToken: true)
                 }
+            } else {
+                resyncIfNeeded()
             }
         }
     }
 
     /// Whether to start a Live Activity when class is about to begin.
     var notifyBefore: Bool {
-        get { UserDefaults.standard.object(forKey: Keys.notifyBefore) as? Bool ?? true }
-        set { UserDefaults.standard.set(newValue, forKey: Keys.notifyBefore) }
+        get { _notifyBefore }
+        set {
+            _notifyBefore = newValue
+            UserDefaults.standard.set(newValue, forKey: Keys.notifyBefore)
+            resyncIfNeeded()
+        }
     }
 
     /// Whether to show the Live Activity during class.
     var notifyStart: Bool {
-        get { UserDefaults.standard.object(forKey: Keys.notifyStart) as? Bool ?? true }
-        set { UserDefaults.standard.set(newValue, forKey: Keys.notifyStart) }
+        get { _notifyStart }
+        set {
+            _notifyStart = newValue
+            UserDefaults.standard.set(newValue, forKey: Keys.notifyStart)
+            resyncIfNeeded()
+        }
     }
 
     /// Whether to keep the Live Activity running until end of class.
     var notifyEnd: Bool {
-        get { UserDefaults.standard.object(forKey: Keys.notifyEnd) as? Bool ?? true }
-        set { UserDefaults.standard.set(newValue, forKey: Keys.notifyEnd) }
+        get { _notifyEnd }
+        set {
+            _notifyEnd = newValue
+            UserDefaults.standard.set(newValue, forKey: Keys.notifyEnd)
+            resyncIfNeeded()
+        }
     }
 
     /// Minutes before class start to show the Live Activity.
     var minutesBefore: Int {
-        get {
-            let v = UserDefaults.standard.integer(forKey: Keys.minutesBefore)
-            return v == 0 ? 15 : v
+        get { _minutesBefore }
+        set {
+            _minutesBefore = newValue
+            UserDefaults.standard.set(newValue, forKey: Keys.minutesBefore)
+            resyncIfNeeded()
         }
-        set { UserDefaults.standard.set(newValue, forKey: Keys.minutesBefore) }
     }
+
+    // MARK: - Backing stored properties (tracked by @Observable)
+    private var _isEnabled: Bool = true
+    private var _notifyBefore: Bool = true
+    private var _notifyStart: Bool = true
+    private var _notifyEnd: Bool = true
+    private var _minutesBefore: Int = 15
 
     // MARK: - UserDefaults Keys
 
@@ -72,6 +104,19 @@ final class CourseNotificationManager {
     }
 
     // MARK: - Called after course load
+
+    /// Re-syncs server schedules using the last known course snapshot when settings change.
+    private func resyncIfNeeded() {
+        guard isEnabled, !lastCourseSnapshot.isEmpty else { return }
+        let courses = lastCourseSnapshot
+        Task {
+            await scheduleRemoteCourseActivities(
+                for: courses,
+                semesterStartDate: nil,
+                semesterEndDate: nil
+            )
+        }
+    }
 
     /// Starts a Live Activity if a class is active or about to start today.
     func scheduleAll(
