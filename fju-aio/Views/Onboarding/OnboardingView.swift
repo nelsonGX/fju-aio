@@ -207,9 +207,11 @@ struct OnboardingView: View {
                             .font(.system(size: 42))
                             .foregroundStyle(.green)
                     }
-                    Text("您的資料，您做主")
+                    Text("以防有人在意...")
                         .font(.system(size: 26, weight: .bold, design: .rounded))
                         .multilineTextAlignment(.center)
+                    Text("這個 App 只是做興趣的，我們不會蒐集您的任何資料。")
+                        .font(.caption)
                 }
 
                 VStack(spacing: 12) {
@@ -221,15 +223,9 @@ struct OnboardingView: View {
                     )
                     PrivacyRow(
                         icon: "icloud.fill",
-                        color: .purple,
+                        color: .white,
                         title: "公開個人檔案由您決定",
-                        description: "只有您主動填寫並儲存的內容，才會透過 CloudKit 對外可見。隨時可在「好友」頁面關閉。"
-                    )
-                    PrivacyRow(
-                        icon: "hand.raised.fill",
-                        color: .orange,
-                        title: "不追蹤、不分析",
-                        description: "App 不收集任何使用行為數據，不含任何第三方追蹤 SDK。"
+                        description: "只有您主動填寫並儲存的內容，才會透過 iCloud 對外可見。隨時可在設定頁面關閉。"
                     )
                 }
                 .padding(.horizontal, 24)
