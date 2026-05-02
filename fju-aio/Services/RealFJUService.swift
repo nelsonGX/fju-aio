@@ -65,9 +65,9 @@ final class RealFJUService: FJUServiceProtocol, @unchecked Sendable {
     }
     
     func fetchAvailableSemesters() async throws -> [String] {
-        logger.info("📅 Fetching available grade semesters from SIS")
+        logger.info("📅 Fetching available semesters from ESTU")
         
-        return try await sisService.getAvailableGradeSemesters()
+        return try await estuCourseService.fetchAvailableSemesters()
     }
     
     // MARK: - Quick Links

@@ -1,4 +1,5 @@
 import SwiftUI
+import os.log
 
 // MARK: - MyProfileView
 
@@ -239,7 +240,10 @@ struct MyProfileView: View {
 
         await syncStatus.withSync("儲存中...") {
             let effectiveName = displayName.isEmpty ? session.userName : displayName
+            snapshotLogger.info("📤 publishProfileNow: shareSchedule=\(self.shareSchedule, privacy: .public), userId=\(session.userId, privacy: .private), empNo=\(session.empNo, privacy: .private)")
+
             let snapshot = shareSchedule ? buildSnapshot(session: session) : nil
+            snapshotLogger.info("📦 publishProfileNow: snapshot is \(snapshot == nil ? "nil" : "present (\(snapshot!.courses.count) courses, semester \(snapshot!.semester))", privacy: .public)")
 
             let profile = PublicProfile(
                 cloudKitRecordName: ProfileQRService.stableDeviceToken(),
@@ -252,10 +256,14 @@ struct MyProfileView: View {
                 lastUpdated: Date()
             )
 
+            snapshotLogger.info("☁️ publishProfileNow: sending to CloudKit — displayName=\(effectiveName, privacy: .public), bio=\(profile.bio ?? "nil", privacy: .public), socialLinks=\(self.socialLinks.count, privacy: .public), hasSnapshot=\(profile.scheduleSnapshot != nil, privacy: .public)")
+
             do {
                 try await CloudKitProfileService.shared.publishProfile(profile)
+                snapshotLogger.info("✅ publishProfileNow: CloudKit save succeeded")
                 isPublished = true
             } catch {
+                snapshotLogger.error("❌ publishProfileNow: CloudKit save failed — \(error.localizedDescription, privacy: .public)")
                 publishError = "儲存失敗：\(error.localizedDescription)"
             }
         }
@@ -275,15 +283,38 @@ struct MyProfileView: View {
 
     // MARK: - Schedule Snapshot
 
+    private let snapshotLogger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.fju.aio", category: "ScheduleSnapshot")
+
     private func buildSnapshot(session: SISSession) -> FriendScheduleSnapshot? {
         let cache = AppCache.shared
-        guard let semesters = cache.getSemesters(), let semester = semesters.first,
-              let courses = cache.getCourses(semester: semester), !courses.isEmpty else { return nil }
+
+        let semesters = cache.getSemesters()
+        snapshotLogger.info("📅 buildSnapshot: cached semesters = \(semesters?.description ?? "nil", privacy: .public)")
+
+        guard let semesters, let semester = semesters.first else {
+            snapshotLogger.warning("⚠️ buildSnapshot: no cached semesters — snapshot will be nil")
+            return nil
+        }
+
+        let courses = cache.getCourses(semester: semester)
+        snapshotLogger.info("📚 buildSnapshot: semester=\(semester, privacy: .public), cached courses count = \(courses?.count ?? -1, privacy: .public)")
+
+        guard let courses, !courses.isEmpty else {
+            snapshotLogger.warning("⚠️ buildSnapshot: no cached courses for semester \(semester, privacy: .public) — snapshot will be nil")
+            return nil
+        }
+
+        let publicCourses = courses.map { PublicCourseInfo(from: $0) }
+        snapshotLogger.info("✅ buildSnapshot: building snapshot with \(publicCourses.count, privacy: .public) courses for semester \(semester, privacy: .public)")
+        for c in publicCourses {
+            snapshotLogger.debug("  📖 \(c.name, privacy: .public) day=\(c.dayOfWeek, privacy: .public) periods=\(c.startPeriod, privacy: .public)-\(c.endPeriod, privacy: .public)")
+        }
+
         return FriendScheduleSnapshot(
             ownerUserId: session.userId,
             ownerDisplayName: session.userName,
             semester: semester,
-            courses: courses.map { PublicCourseInfo(from: $0) },
+            courses: publicCourses,
             updatedAt: Date()
         )
     }

@@ -60,12 +60,12 @@ actor EstuAuthService {
         let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.fju.aio", category: "EstuAuth")
         logger.info("🔍 Checking for valid Estu session...")
         
-        if let session = currentSession, !session.isExpired {
+        if let session = currentSession, !session.isExpired, session.loginResponseHTML != nil {
             logger.info("✅ Using cached session")
             return session
         }
         
-        logger.info("⚠️ Session expired or missing, attempting refresh...")
+        logger.info("⚠️ Session expired, missing, or has no HTML — attempting refresh...")
         return try await forceRelogin()
     }
     
