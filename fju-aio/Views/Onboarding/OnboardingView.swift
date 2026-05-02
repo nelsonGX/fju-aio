@@ -422,30 +422,40 @@ private struct OnboardingProfilePage: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
 
-                    if isPublished {
-                        Divider().padding(.leading, 16)
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            Picker("課表分享", selection: scheduleVisibilityBinding) {
-                                ForEach(ScheduleVisibility.allCases, id: \.rawValue) { visibility in
-                                    Text(visibility.label).tag(visibility.rawValue)
-                                }
-                            }
-                            .pickerStyle(.segmented)
-
-                            Text(scheduleVisibility.description)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 12)
-                    }
                 }
                 .background(Color(.secondarySystemGroupedBackground))
                 .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                 .padding(.horizontal, 20)
 
                 if isPublished {
+                    VStack(spacing: 0) {
+                        HStack {
+                            Text("課表分享")
+                            Spacer()
+                            Picker("課表分享", selection: scheduleVisibilityBinding) {
+                                ForEach(ScheduleVisibility.allCases, id: \.rawValue) { visibility in
+                                    Text(visibility.label).tag(visibility.rawValue)
+                                }
+                            }
+                            .labelsHidden()
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+
+                        Divider().padding(.leading, 16)
+
+                        Text(scheduleVisibility.description)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                    }
+                    .background(Color(.secondarySystemGroupedBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+                    .padding(.horizontal, 20)
+                    .padding(.top, 20)
+
                     // MARK: Bio
                     VStack(alignment: .leading, spacing: 0) {
                         Text("自我介紹")
