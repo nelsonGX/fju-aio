@@ -16,6 +16,7 @@ struct NearbyPeerProfile: Identifiable, Equatable {
     let empNo: String
     let displayName: String
     let userId: Int
+    let scheduleShareToken: String?
 }
 
 // MARK: - NearbyFriendService
@@ -315,7 +316,8 @@ extension NearbyFriendService: CBPeripheralManagerDelegate {
                     id: payload.cloudKitRecordName,
                     empNo: payload.empNo,
                     displayName: payload.displayName,
-                    userId: payload.userId
+                    userId: payload.userId,
+                    scheduleShareToken: payload.scheduleShareToken
                 )
 
                 if !self.incomingAddRequests.contains(where: { $0.id == peer.id }) {
@@ -463,7 +465,8 @@ extension NearbyFriendService: CBPeripheralDelegate {
                 id: payload.cloudKitRecordName,
                 empNo: payload.empNo,
                 displayName: payload.displayName,
-                userId: payload.userId
+                userId: payload.userId,
+                scheduleShareToken: payload.scheduleShareToken
             )
 
             self.logger.info("✅ Received profile: \(peer.displayName, privacy: .public) (\(peer.empNo, privacy: .public))")

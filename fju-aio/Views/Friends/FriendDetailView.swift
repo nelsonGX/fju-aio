@@ -178,7 +178,13 @@ struct FriendDetailView: View {
         if let cached = friend.cachedProfile { profile = cached }
 
         do {
-            if let fresh = try await CloudKitProfileService.shared.fetchProfile(recordName: friend.id) {
+            if var fresh = try await CloudKitProfileService.shared.fetchProfile(recordName: friend.id) {
+                if fresh.scheduleSnapshot == nil,
+                   let token = currentFriend.scheduleShareToken,
+                   let snapshot = try? await CloudKitProfileService.shared.fetchFriendSchedule(token: token),
+                   snapshot.ownerUserId == fresh.userId || snapshot.ownerDisplayName == fresh.displayName {
+                    fresh.scheduleSnapshot = snapshot
+                }
                 profile = fresh
                 FriendStore.shared.updateCachedProfile(fresh, for: friend.id)
             }

@@ -331,6 +331,7 @@ private struct OnboardingProfilePage: View {
     @AppStorage("myProfile.bio") private var bio = ""
     @AppStorage("myProfile.isPublished") private var isPublished = false
     @AppStorage("myProfile.shareSchedule") private var shareSchedule = false
+    @AppStorage("myProfile.scheduleVisibility") private var scheduleVisibilityRaw = ""
 
     @State private var socialLinks: [SocialLink] = []
     @State private var sisSession: SISSession?
@@ -413,8 +414,18 @@ private struct OnboardingProfilePage: View {
                     if isPublished {
                         Divider().padding(.leading, 16)
 
-                        // Share schedule
-                        Toggle("公開我的課表", isOn: $shareSchedule)
+                        VStack(alignment: .leading, spacing: 8) {
+                            Picker("課表分享", selection: scheduleVisibilityBinding) {
+                                ForEach(ScheduleVisibility.allCases, id: \.rawValue) { visibility in
+                                    Text(visibility.label).tag(visibility.rawValue)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+
+                            Text(scheduleVisibility.description)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                             .padding(.horizontal, 16)
                             .padding(.vertical, 12)
                     }
@@ -573,7 +584,8 @@ private struct OnboardingProfilePage: View {
         }
 
         let effectiveName = displayName.isEmpty ? session.userName : displayName
-        let snapshot: FriendScheduleSnapshot? = shareSchedule ? await buildSnapshot(session: session) : nil
+        let visibility = scheduleVisibility
+        let snapshot: FriendScheduleSnapshot? = visibility == .off ? nil : await buildSnapshot(session: session)
         let profile = PublicProfile(
             cloudKitRecordName: ProfileQRService.stableDeviceToken(),
             userId: session.userId,
@@ -582,11 +594,22 @@ private struct OnboardingProfilePage: View {
             avatarURLString: profileAvatarURL?.absoluteString,
             bio: bio.isEmpty ? nil : bio,
             socialLinks: socialLinks,
-            scheduleSnapshot: snapshot,
+            scheduleSnapshot: visibility == .public ? snapshot : nil,
             lastUpdated: Date()
         )
         do {
             try await CloudKitProfileService.shared.publishProfile(profile)
+            let scheduleToken = ProfileQRService.scheduleShareToken()
+            if visibility == .friendsOnly, let snapshot {
+                try await CloudKitProfileService.shared.publishFriendSchedule(
+                    snapshot,
+                    token: scheduleToken,
+                    ownerRecordName: profile.cloudKitRecordName,
+                    ownerEmpNo: session.empNo
+                )
+            } else if visibility == .off || visibility == .public {
+                try? await CloudKitProfileService.shared.deleteFriendSchedule(token: scheduleToken)
+            }
             onSaved()
         } catch {
             publishError = "儲存失敗：\(error.localizedDescription)"
@@ -625,6 +648,23 @@ private struct OnboardingProfilePage: View {
         if let data = try? JSONEncoder().encode(socialLinks) {
             UserDefaults.standard.set(data, forKey: socialLinksKey)
         }
+    }
+
+    private var scheduleVisibility: ScheduleVisibility {
+        if let visibility = ScheduleVisibility(rawValue: scheduleVisibilityRaw) {
+            return visibility
+        }
+        return ScheduleVisibility(legacyShareSchedule: shareSchedule)
+    }
+
+    private var scheduleVisibilityBinding: Binding<String> {
+        Binding(
+            get: { scheduleVisibility.rawValue },
+            set: { newValue in
+                scheduleVisibilityRaw = newValue
+                shareSchedule = newValue == ScheduleVisibility.public.rawValue
+            }
+        )
     }
 
     private func buildSnapshot(session: SISSession) async -> FriendScheduleSnapshot? {

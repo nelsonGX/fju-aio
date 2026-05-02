@@ -11,6 +11,7 @@ struct MyProfileView: View {
     @AppStorage("myProfile.bio") private var bio = ""
     @AppStorage("myProfile.isPublished") private var isPublished = false
     @AppStorage("myProfile.shareSchedule") private var shareSchedule = false
+    @AppStorage("myProfile.scheduleVisibility") private var scheduleVisibilityRaw = ""
 
     // Social links are stored as JSON in UserDefaults (AppStorage can't hold [SocialLink])
     @State private var socialLinks: [SocialLink] = []
@@ -94,7 +95,14 @@ struct MyProfileView: View {
             // MARK: Profile fields (only shown when enabled)
             if isPublished {
                 Section {
-                    Toggle("公開我的課表", isOn: $shareSchedule)
+                    Picker("課表分享", selection: scheduleVisibilityBinding) {
+                        ForEach(ScheduleVisibility.allCases, id: \.rawValue) { visibility in
+                            Text(visibility.label).tag(visibility.rawValue)
+                        }
+                    }
+                    Text(scheduleVisibility.description)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 } footer: {
                     Text("變更後將自動同步到雲端。")
                 }
@@ -152,7 +160,7 @@ struct MyProfileView: View {
             }
         }
         .onChange(of: bio) { _, _ in scheduleSave() }
-        .onChange(of: shareSchedule) { _, _ in scheduleSave() }
+        .onChange(of: scheduleVisibilityRaw) { _, _ in scheduleSave() }
         .onChange(of: socialLinks) { _, _ in
             saveSocialLinks()
             scheduleSave()
@@ -244,9 +252,11 @@ struct MyProfileView: View {
 
         await syncStatus.withSync("儲存中...") {
             let effectiveName = displayName.isEmpty ? session.userName : displayName
-            snapshotLogger.info("📤 publishProfileNow: shareSchedule=\(self.shareSchedule, privacy: .public), userId=\(session.userId, privacy: .private), empNo=\(session.empNo, privacy: .private)")
+            let visibility = self.scheduleVisibility
+            snapshotLogger.info("📤 publishProfileNow: scheduleVisibility=\(visibility.rawValue, privacy: .public), userId=\(session.userId, privacy: .private), empNo=\(session.empNo, privacy: .private)")
 
-            let snapshot = shareSchedule ? await buildSnapshot(session: session) : nil
+            let snapshot = visibility == .off ? nil : await buildSnapshot(session: session)
+            let publicSnapshot = visibility == .public ? snapshot : nil
             snapshotLogger.info("📦 publishProfileNow: snapshot is \(snapshot == nil ? "nil" : "present (\(snapshot!.courses.count) courses, semester \(snapshot!.semester))", privacy: .public)")
 
             let profile = PublicProfile(
@@ -257,7 +267,7 @@ struct MyProfileView: View {
                 avatarURLString: profileAvatarURL?.absoluteString,
                 bio: bio.isEmpty ? nil : bio,
                 socialLinks: socialLinks,
-                scheduleSnapshot: snapshot,
+                scheduleSnapshot: publicSnapshot,
                 lastUpdated: Date()
             )
 
@@ -265,6 +275,17 @@ struct MyProfileView: View {
 
             do {
                 try await CloudKitProfileService.shared.publishProfile(profile)
+                let scheduleToken = ProfileQRService.scheduleShareToken()
+                if visibility == .friendsOnly, let snapshot {
+                    try await CloudKitProfileService.shared.publishFriendSchedule(
+                        snapshot,
+                        token: scheduleToken,
+                        ownerRecordName: profile.cloudKitRecordName,
+                        ownerEmpNo: session.empNo
+                    )
+                } else if visibility == .off || visibility == .public {
+                    try? await CloudKitProfileService.shared.deleteFriendSchedule(token: scheduleToken)
+                }
                 snapshotLogger.info("✅ publishProfileNow: CloudKit save succeeded")
                 isPublished = true
             } catch {
@@ -283,6 +304,7 @@ struct MyProfileView: View {
         } catch {
             // Silently ignore delete errors (record may not exist)
         }
+        try? await CloudKitProfileService.shared.deleteFriendSchedule(token: ProfileQRService.scheduleShareToken())
         isPublished = false
     }
 
@@ -346,8 +368,25 @@ struct MyProfileView: View {
             avatarURLString: profileAvatarURL?.absoluteString,
             bio: bio.isEmpty ? nil : bio,
             socialLinks: socialLinks,
-            scheduleSnapshot: shareSchedule ? buildCachedSnapshot(session: session) : nil,
+            scheduleSnapshot: scheduleVisibility == .public ? buildCachedSnapshot(session: session) : nil,
             lastUpdated: Date()
+        )
+    }
+
+    private var scheduleVisibility: ScheduleVisibility {
+        if let visibility = ScheduleVisibility(rawValue: scheduleVisibilityRaw) {
+            return visibility
+        }
+        return ScheduleVisibility(legacyShareSchedule: shareSchedule)
+    }
+
+    private var scheduleVisibilityBinding: Binding<String> {
+        Binding(
+            get: { scheduleVisibility.rawValue },
+            set: { newValue in
+                scheduleVisibilityRaw = newValue
+                shareSchedule = newValue == ScheduleVisibility.public.rawValue
+            }
         )
     }
 

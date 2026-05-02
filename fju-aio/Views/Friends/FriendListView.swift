@@ -145,7 +145,7 @@ private struct FriendListContent: View {
         await withTaskGroup(of: Void.self) { group in
             for friend in friendStore.friends {
                 group.addTask {
-                    if let profile = try? await CloudKitProfileService.shared.fetchProfile(recordName: friend.id) {
+                    if let profile = try? await Self.loadProfileWithFriendSchedule(friend: friend) {
                         await MainActor.run {
                             self.friendStore.updateCachedProfile(profile, for: friend.id)
                         }
@@ -178,7 +178,9 @@ private struct FriendListContent: View {
                 return
             }
             guard !friendStore.isFriend(recordName: payload.cloudKitRecordName) else {
+                friendStore.updateScheduleShareToken(payload.scheduleShareToken, for: payload.cloudKitRecordName)
                 lastScannedInfo = "\(payload.displayName) 已經在好友列表中。"
+                fetchAndCacheProfile(recordName: payload.cloudKitRecordName)
                 return
             }
             friendStore.addFriend(from: payload)
@@ -190,7 +192,9 @@ private struct FriendListContent: View {
                 return
             }
             guard !friendStore.isFriend(recordName: payload.cloudKitRecordName) else {
+                friendStore.updateScheduleShareToken(payload.scheduleShareToken, for: payload.cloudKitRecordName)
                 lastScannedInfo = "\(payload.displayName) 已經在好友列表中。"
+                fetchAndCacheProfile(recordName: payload.cloudKitRecordName)
                 return
             }
             let profilePayload = ProfileQRPayload(
@@ -199,7 +203,8 @@ private struct FriendListContent: View {
                 cloudKitRecordName: payload.cloudKitRecordName,
                 empNo: payload.empNo,
                 displayName: payload.displayName,
-                userId: payload.userId
+                userId: payload.userId,
+                scheduleShareToken: payload.scheduleShareToken
             )
             friendStore.addFriend(from: profilePayload)
             lastScannedInfo = "已新增好友：\(payload.displayName)（\(payload.empNo)）"
@@ -218,10 +223,13 @@ private struct FriendListContent: View {
                 cloudKitRecordName: payload.cloudKitRecordName,
                 empNo: payload.empNo,
                 displayName: payload.displayName,
-                userId: payload.userId
+                userId: payload.userId,
+                scheduleShareToken: payload.scheduleShareToken
             )
             if !wasAlreadyFriend {
                 friendStore.addFriend(from: profilePayload)
+            } else {
+                friendStore.updateScheduleShareToken(payload.scheduleShareToken, for: payload.cloudKitRecordName)
             }
             if let friendId = friendStore.friends.first(where: { $0.id == payload.cloudKitRecordName })?.id {
                 friendStore.saveCredentials(for: friendId, username: payload.username, password: payload.password)
@@ -239,7 +247,10 @@ private struct FriendListContent: View {
 
     private func fetchAndCacheProfile(recordName: String) {
         Task {
-            if let profile = try? await CloudKitProfileService.shared.fetchProfile(recordName: recordName) {
+            guard let friend = await MainActor.run(body: {
+                friendStore.friends.first { $0.id == recordName }
+            }) else { return }
+            if let profile = try? await Self.loadProfileWithFriendSchedule(friend: friend) {
                 await MainActor.run {
                     friendStore.updateCachedProfile(profile, for: recordName)
                 }
@@ -248,17 +259,35 @@ private struct FriendListContent: View {
     }
 
     private func addFriend(_ peer: NearbyPeerProfile) {
-        guard !friendStore.isFriend(recordName: peer.id) else { return }
+        guard !friendStore.isFriend(recordName: peer.id) else {
+            friendStore.updateScheduleShareToken(peer.scheduleShareToken, for: peer.id)
+            fetchAndCacheProfile(recordName: peer.id)
+            return
+        }
         let payload = ProfileQRPayload(
             version: 1,
             type: "profile",
             cloudKitRecordName: peer.id,
             empNo: peer.empNo,
             displayName: peer.displayName,
-            userId: peer.userId
+            userId: peer.userId,
+            scheduleShareToken: peer.scheduleShareToken
         )
         friendStore.addFriend(from: payload)
         fetchAndCacheProfile(recordName: peer.id)
+    }
+
+    private static func loadProfileWithFriendSchedule(friend: FriendRecord) async throws -> PublicProfile? {
+        guard var profile = try await CloudKitProfileService.shared.fetchProfile(recordName: friend.id) else {
+            return nil
+        }
+        if profile.scheduleSnapshot == nil,
+           let token = friend.scheduleShareToken,
+           let snapshot = try? await CloudKitProfileService.shared.fetchFriendSchedule(token: token),
+           snapshot.ownerUserId == profile.userId || snapshot.ownerDisplayName == profile.displayName {
+            profile.scheduleSnapshot = snapshot
+        }
+        return profile
     }
 
     private func startNearbyIfPossible() {

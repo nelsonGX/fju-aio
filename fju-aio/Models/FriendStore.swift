@@ -22,7 +22,11 @@ final class FriendStore {
     // MARK: - Friends
 
     func addFriend(from payload: ProfileQRPayload) {
-        guard !friends.contains(where: { $0.id == payload.cloudKitRecordName }) else {
+        if let idx = friends.firstIndex(where: { $0.id == payload.cloudKitRecordName }) {
+            if let token = payload.scheduleShareToken, friends[idx].scheduleShareToken != token {
+                friends[idx].scheduleShareToken = token
+                save()
+            }
             logger.info("Friend \(payload.empNo) already in list")
             return
         }
@@ -31,6 +35,7 @@ final class FriendStore {
             empNo: payload.empNo,
             displayName: payload.displayName,
             cachedProfile: nil,
+            scheduleShareToken: payload.scheduleShareToken,
             addedAt: Date()
         )
         record.hasStoredCredentials = CredentialStore.shared.hasFriendCredentials(empNo: payload.empNo)
@@ -50,6 +55,13 @@ final class FriendStore {
         save()
         // Refresh widget with updated friend schedule data
         WidgetCenter.shared.reloadTimelines(ofKind: "CourseScheduleWidget")
+    }
+
+    func updateScheduleShareToken(_ token: String?, for id: String) {
+        guard let token, let idx = friends.firstIndex(where: { $0.id == id }),
+              friends[idx].scheduleShareToken != token else { return }
+        friends[idx].scheduleShareToken = token
+        save()
     }
 
     func removeFriend(id: String) {

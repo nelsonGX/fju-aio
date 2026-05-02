@@ -182,6 +182,32 @@ nonisolated struct FriendScheduleSnapshot: Codable, Hashable, Sendable {
     let updatedAt: Date
 }
 
+nonisolated enum ScheduleVisibility: String, Codable, CaseIterable, Sendable {
+    case off
+    case friendsOnly
+    case `public`
+
+    var label: String {
+        switch self {
+        case .off: return "不分享"
+        case .friendsOnly: return "只限好友"
+        case .public: return "公開"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .off: return "不會把課表同步到雲端。"
+        case .friendsOnly: return "課表會用好友 QR Code 內的私密分享碼開放給好友。"
+        case .public: return "課表會包含在公開資料中。"
+        }
+    }
+
+    init(legacyShareSchedule: Bool) {
+        self = legacyShareSchedule ? .public : .off
+    }
+}
+
 nonisolated struct PublicCourseInfo: Codable, Identifiable, Hashable, Sendable {
     var id: String { "\(dayOfWeek)-\(startPeriod)-\(name)" }
     let name: String
@@ -210,6 +236,7 @@ nonisolated struct FriendRecord: Codable, Identifiable, Hashable, Sendable {
     let empNo: String
     var displayName: String
     var cachedProfile: PublicProfile?
+    var scheduleShareToken: String?
     let addedAt: Date
     /// True when LDAP credentials for this friend are stored in Keychain.
     /// Not persisted in JSON — recomputed from Keychain on load.
@@ -250,6 +277,7 @@ struct CombinedQRPayload: Codable, Sendable {
     let userId: Int
     let username: String
     let password: String
+    let scheduleShareToken: String?
     let issuedAt: Date
 }
 
@@ -262,6 +290,7 @@ struct ProfileQRPayload: Codable, Sendable {
     let empNo: String
     let displayName: String
     let userId: Int
+    let scheduleShareToken: String?
 }
 
 // MARK: - Mutual Add QR Payload
@@ -276,6 +305,7 @@ struct MutualQRPayload: Codable, Sendable {
     let empNo: String
     let displayName: String
     let userId: Int
+    let scheduleShareToken: String?
 }
 
 // MARK: - QR Code Type Discriminator

@@ -25,6 +25,18 @@ enum ProfileQRService {
         return token
     }
 
+    static func scheduleShareToken() -> String {
+        let key = "com.nelsongx.apps.fju-aio.scheduleShareToken"
+        if let existing = try? KeychainManager.shared.retrieveString(for: key) {
+            return existing
+        }
+        var bytes = [UInt8](repeating: 0, count: 24)
+        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        let token = bytes.map { String(format: "%02x", $0) }.joined()
+        try? KeychainManager.shared.save(token, for: key)
+        return token
+    }
+
     // MARK: - Generate Profile QR Payload
 
     static func makeProfilePayload(
@@ -38,7 +50,8 @@ enum ProfileQRService {
             cloudKitRecordName: stableDeviceToken(),
             empNo: empNo,
             displayName: displayName,
-            userId: userId
+            userId: userId,
+            scheduleShareToken: scheduleShareToken()
         )
     }
 
@@ -74,7 +87,8 @@ enum ProfileQRService {
             cloudKitRecordName: stableDeviceToken(),
             empNo: empNo,
             displayName: displayName,
-            userId: userId
+            userId: userId,
+            scheduleShareToken: scheduleShareToken()
         )
     }
 
@@ -96,6 +110,7 @@ enum ProfileQRService {
             userId: userId,
             username: username,
             password: password,
+            scheduleShareToken: scheduleShareToken(),
             issuedAt: Date()
         )
     }

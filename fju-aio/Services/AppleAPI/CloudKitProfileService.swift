@@ -15,6 +15,14 @@ actor CloudKitProfileService {
 
     private init() {}
 
+    private enum FriendScheduleField {
+        static let recordType = "FriendScheduleShare"
+        static let ownerRecordName = "ownerRecordName"
+        static let ownerEmpNo = "ownerEmpNo"
+        static let scheduleSnapshotData = "scheduleSnapshotData"
+        static let lastUpdated = "lastUpdated"
+    }
+
     // MARK: - Publish Own Profile
 
     func publishProfile(_ profile: PublicProfile) async throws {
@@ -126,6 +134,43 @@ actor CloudKitProfileService {
         return profiles
     }
 
+    // MARK: - Friend-only Schedule Share
+
+    func publishFriendSchedule(_ snapshot: FriendScheduleSnapshot, token: String, ownerRecordName: String, ownerEmpNo: String) async throws {
+        let recordID = CKRecord.ID(recordName: friendScheduleRecordName(token: token))
+        let record: CKRecord
+        do {
+            record = try await publicDB.record(for: recordID)
+        } catch let error as CKError where error.code == .unknownItem {
+            record = CKRecord(recordType: FriendScheduleField.recordType, recordID: recordID)
+        }
+
+        record[FriendScheduleField.ownerRecordName] = ownerRecordName as CKRecordValue
+        record[FriendScheduleField.ownerEmpNo] = ownerEmpNo as CKRecordValue
+        record[FriendScheduleField.scheduleSnapshotData] = try JSONEncoder().encode(snapshot) as CKRecordValue
+        record[FriendScheduleField.lastUpdated] = snapshot.updatedAt as CKRecordValue
+
+        _ = try await publicDB.modifyRecords(saving: [record], deleting: [])
+        logger.info("✅ Published friend-only schedule for \(ownerEmpNo, privacy: .private)")
+    }
+
+    func fetchFriendSchedule(token: String) async throws -> FriendScheduleSnapshot? {
+        let recordID = CKRecord.ID(recordName: friendScheduleRecordName(token: token))
+        do {
+            let record = try await publicDB.record(for: recordID)
+            guard let data = record[FriendScheduleField.scheduleSnapshotData] as? Data else { return nil }
+            return try? JSONDecoder().decode(FriendScheduleSnapshot.self, from: data)
+        } catch let error as CKError where error.code == .unknownItem {
+            return nil
+        }
+    }
+
+    func deleteFriendSchedule(token: String) async throws {
+        let recordID = CKRecord.ID(recordName: friendScheduleRecordName(token: token))
+        _ = try await publicDB.modifyRecords(saving: [], deleting: [recordID])
+        logger.info("🗑️ Deleted friend-only schedule")
+    }
+
     // MARK: - Delete Own Profile
 
     func deleteProfile(recordName: String) async throws {
@@ -165,6 +210,10 @@ actor CloudKitProfileService {
             scheduleSnapshot: snapshot,
             lastUpdated: lastUpdated
         )
+    }
+
+    private func friendScheduleRecordName(token: String) -> String {
+        "friendSchedule-\(token)"
     }
 }
 
