@@ -4,6 +4,7 @@ import SwiftUI
 
 enum AppDestination: Hashable {
     case courseSchedule
+    case courseDetail(courseID: String)
     case classroomSchedule
     case grades
     case leaveRequest
@@ -13,6 +14,7 @@ enum AppDestination: Hashable {
     case checkIn
     case enrollmentCertificate
     case campusMap
+    case campusMapLocation(location: String)
     case friends
     case myProfile
 
@@ -31,6 +33,32 @@ enum AppDestination: Hashable {
         case "friends":                 self = .friends
         case "myProfile":               self = .myProfile
         default:                        return nil
+        }
+    }
+
+    init?(deepLinkURL url: URL) {
+        guard url.scheme == "fju-aio",
+              url.host == "page",
+              let pathComponent = url.pathComponents.dropFirst().first
+        else {
+            return nil
+        }
+
+        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        let queryItems = components?.queryItems ?? []
+
+        if pathComponent == "course" {
+            guard let courseID = queryItems.first(where: { $0.name == "courseId" })?.value,
+                  !courseID.isEmpty else {
+                return nil
+            }
+            self = .courseDetail(courseID: courseID)
+        } else if pathComponent == "campusMap",
+                  let location = queryItems.first(where: { $0.name == "location" })?.value,
+                  !location.isEmpty {
+            self = .campusMapLocation(location: location)
+        } else {
+            self.init(deepLinkPath: pathComponent)
         }
     }
 }
@@ -110,13 +138,7 @@ struct ContentView: View {
     }
 
     private func handleDeepLink(_ url: URL) {
-        guard url.scheme == "fju-aio",
-              url.host == "page",
-              let pathComponent = url.pathComponents.dropFirst().first,
-              let destination = AppDestination(deepLinkPath: pathComponent)
-        else {
-            return
-        }
+        guard let destination = AppDestination(deepLinkURL: url) else { return }
 
         open(destination)
     }
@@ -172,6 +194,8 @@ struct ContentView: View {
     private func destinationView(for destination: AppDestination) -> some View {
         switch destination {
         case .courseSchedule:    CourseScheduleView()
+        case .courseDetail(let courseID):
+            CourseScheduleView(deepLinkedCourseID: courseID)
         case .classroomSchedule: ClassroomScheduleView()
         case .grades:           GradesView()
         case .leaveRequest:     LeaveRequestView()
@@ -181,6 +205,8 @@ struct ContentView: View {
         case .checkIn:                  CheckInView()
         case .enrollmentCertificate:    EnrollmentCertificateView()
         case .campusMap:                CampusMapView()
+        case .campusMapLocation(let location):
+            CampusMapView(highlightLocation: location)
         case .friends:                  FriendListView()
         case .myProfile:                MyProfileView()
         }

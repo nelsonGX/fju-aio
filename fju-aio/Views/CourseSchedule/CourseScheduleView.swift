@@ -5,6 +5,7 @@ struct CourseScheduleView: View {
     @Environment(\.fjuService) private var service
     @Environment(SyncStatusManager.self) private var syncStatus
     @State private var courses: [Course] = []
+    @State private var pendingDeepLinkedCourseID: String?
     @State private var isLoading = true
     @State private var availableSemesters: [String] = []
     @State private var selectedSemester: String = ""
@@ -22,6 +23,10 @@ struct CourseScheduleView: View {
     private let visibleFriendIdsStoragePrefix = "courseSchedule.visibleFriendIds."
     private let cache = AppCache.shared
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "CourseSchedule")
+
+    init(deepLinkedCourseID: String? = nil) {
+        _pendingDeepLinkedCourseID = State(initialValue: deepLinkedCourseID)
+    }
 
     /// Friends who have a schedule snapshot for the selected semester.
     private var friendsWithSchedule: [FriendRecord] {
@@ -157,6 +162,9 @@ struct CourseScheduleView: View {
         }
         .onChange(of: visibleFriendIds) { _, _ in
             saveVisibleFriendIds()
+        }
+        .onChange(of: courses) { _, _ in
+            presentDeepLinkedCourseIfNeeded()
         }
     }
 
@@ -624,6 +632,7 @@ struct CourseScheduleView: View {
         if !forceRefresh, let cached = cache.getCourses(semester: selectedSemester) {
             courses = cached
             isLoading = false
+            presentDeepLinkedCourseIfNeeded()
             WidgetDataWriter.shared.writeCourseData(courses: cached, friends: FriendStore.shared.friends)
             scheduleCourseNotifications(for: cached)
             return
@@ -641,9 +650,23 @@ struct CourseScheduleView: View {
             courses = []
         }
         isLoading = false
+        presentDeepLinkedCourseIfNeeded()
 
         // Schedule notifications and Live Activity in the background after UI is shown
         scheduleCourseNotifications(for: courses)
+    }
+
+    private func presentDeepLinkedCourseIfNeeded() {
+        guard let courseID = pendingDeepLinkedCourseID,
+              selectedCourseDetail == nil,
+              let course = courses.first(where: { $0.id == courseID || $0.code == courseID })
+        else { return }
+
+        pendingDeepLinkedCourseID = nil
+        selectedCourseDetail = CourseDetailSelection(
+            course: course,
+            overlappingFriendCourses: friendOccurrences(overlapping: course)
+        )
     }
 
     private func scheduleCourseNotifications(for courses: [Course]) {

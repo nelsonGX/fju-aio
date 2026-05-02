@@ -96,13 +96,7 @@ struct FJUApp: App {
 
     @MainActor
     private func handleDeepLink(_ url: URL) {
-        guard url.scheme == "fju-aio",
-              url.host == "page",
-              let pathComponent = url.pathComponents.dropFirst().first,
-              let destination = AppDestination(deepLinkPath: pathComponent)
-        else {
-            return
-        }
+        guard let destination = AppDestination(deepLinkURL: url) else { return }
 
         isWidgetQuickLaunch = true
         hasSkippedPreload = true

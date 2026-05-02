@@ -1,4 +1,5 @@
 import SwiftUI
+import AVFoundation
 
 // MARK: - Onboarding View
 
@@ -74,7 +75,7 @@ struct OnboardingView: View {
 
     private var scheduleAndLivePage: some View {
         VStack(spacing: 0) {
-            mediaPlaceholder(icon: "calendar", color: .blue, assetName: "onboarding_schedule")
+            OnboardingPreviewVideo(resourceName: "onboarding_step_1_preview")
                 .padding(.horizontal, 20)
                 .padding(.top, 40)
 
@@ -318,6 +319,93 @@ struct OnboardingView: View {
     private func completeOnboarding() {
         onComplete()
         hasCompletedOnboarding = true
+    }
+}
+
+// MARK: - Onboarding Preview Video
+
+private struct OnboardingPreviewVideo: View {
+    let resourceName: String
+
+    @State private var player = AVQueuePlayer()
+    @State private var looper: AVPlayerLooper?
+    @State private var didConfigurePlayer = false
+
+    var body: some View {
+        Group {
+            if let url = Bundle.main.onboardingVideoURL(named: resourceName) {
+                PlayerLayerView(player: player)
+                    .onAppear {
+                        configurePlayerIfNeeded(url: url)
+                        player.play()
+                    }
+                    .onDisappear {
+                        player.pause()
+                    }
+            } else {
+                mediaFallback
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 260)
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+    }
+
+    private var mediaFallback: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                .fill(Color.blue.opacity(0.08))
+            VStack(spacing: 10) {
+                Image(systemName: "play.rectangle.fill")
+                    .font(.system(size: 52))
+                    .foregroundStyle(Color.blue.opacity(0.4))
+                Text("預覽影片")
+                    .font(.caption)
+                    .foregroundStyle(Color.secondary.opacity(0.4))
+            }
+        }
+    }
+
+    private func configurePlayerIfNeeded(url: URL) {
+        guard !didConfigurePlayer else { return }
+
+        let item = AVPlayerItem(url: url)
+        looper = AVPlayerLooper(player: player, templateItem: item)
+        player.isMuted = true
+        player.actionAtItemEnd = .none
+        didConfigurePlayer = true
+    }
+}
+
+private struct PlayerLayerView: UIViewRepresentable {
+    let player: AVPlayer
+
+    func makeUIView(context: Context) -> PlayerLayerContainerView {
+        let view = PlayerLayerContainerView()
+        view.playerLayer.player = player
+        view.playerLayer.videoGravity = .resizeAspectFill
+        return view
+    }
+
+    func updateUIView(_ uiView: PlayerLayerContainerView, context: Context) {
+        uiView.playerLayer.player = player
+    }
+}
+
+private final class PlayerLayerContainerView: UIView {
+    override static var layerClass: AnyClass {
+        AVPlayerLayer.self
+    }
+
+    var playerLayer: AVPlayerLayer {
+        layer as! AVPlayerLayer
+    }
+}
+
+private extension Bundle {
+    func onboardingVideoURL(named name: String) -> URL? {
+        url(forResource: name, withExtension: "mp4")
+            ?? url(forResource: name, withExtension: "mp4", subdirectory: "Resources")
     }
 }
 
