@@ -15,7 +15,7 @@ actor GroupRollcallService {
     static let shared = GroupRollcallService()
 
     private let baseURL = "https://elearn2.fju.edu.tw"
-    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.fju.aio", category: "GroupRollcall")
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "GroupRollcall")
 
     private init() {}
 

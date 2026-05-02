@@ -8,7 +8,7 @@ actor TronClassAPIService {
     private let outlineBaseURL = "https://travellerlink.fju.edu.tw"
     private let authService = TronClassAuthService.shared
     private let networkService = NetworkService.shared
-    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.fju.aio", category: "TronClassAPI")
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "TronClassAPI")
     
     // MARK: - In-memory cache
 

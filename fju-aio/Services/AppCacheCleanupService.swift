@@ -3,7 +3,7 @@ import os.log
 
 @MainActor
 enum AppCacheCleanupService {
-    private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.fju.aio", category: "CacheCleanup")
+    private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "CacheCleanup")
 
     static func clearForLogout() {
         AppCache.shared.invalidateAll()

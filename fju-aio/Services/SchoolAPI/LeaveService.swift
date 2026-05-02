@@ -10,7 +10,7 @@ actor LeaveService {
     private let baseURL = "https://exploreLink.fju.edu.tw/stuLeave/api"
     private let authService = SISAuthService.shared
     private let networkService = NetworkService.shared
-    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.fju.aio", category: "LeaveService")
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "LeaveService")
 
     private init() {}
 

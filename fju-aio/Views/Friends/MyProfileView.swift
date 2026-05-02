@@ -284,7 +284,7 @@ struct MyProfileView: View {
 
     // MARK: - Schedule Snapshot
 
-    private let snapshotLogger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.fju.aio", category: "ScheduleSnapshot")
+    private let snapshotLogger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "ScheduleSnapshot")
 
     private func buildSnapshot(session: SISSession) async -> FriendScheduleSnapshot? {
         let cache = AppCache.shared

@@ -5,7 +5,7 @@ final class RealFJUService: FJUServiceProtocol, @unchecked Sendable {
     private let sisService = SISService.shared
     private let sisAuthService = SISAuthService.shared
     private let estuCourseService = EstuCourseService.shared
-    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.fju.aio", category: "RealFJUService")
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "RealFJUService")
     
     // MARK: - Course Schedule
     

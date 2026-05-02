@@ -32,7 +32,7 @@ final class NearbyFriendService: NSObject {
     private(set) var incomingAddRequests: [NearbyPeerProfile] = []
     private(set) var isActive = false
 
-    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.fju.aio", category: "NearbyFriend")
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "NearbyFriend")
 
     // Peripheral side
     private var peripheralManager: CBPeripheralManager?
@@ -60,7 +60,7 @@ final class NearbyFriendService: NSObject {
         myProfileData = data
 
         // Use a background queue — passing .main can suppress the permission prompt on some iOS versions
-        let btQueue = DispatchQueue(label: "com.fju.aio.bluetooth", qos: .userInitiated)
+        let btQueue = DispatchQueue(label: "com.nelsongx.apps.fju-aio.bluetooth", qos: .userInitiated)
 
         peripheralManager = CBPeripheralManager(delegate: self, queue: btQueue, options: [
             CBPeripheralManagerOptionShowPowerAlertKey: true

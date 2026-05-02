@@ -3,7 +3,7 @@ import os.log
 
 final class NetworkLogger: Sendable {
     nonisolated static let shared = NetworkLogger()
-    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.fju.aio", category: "Network")
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "Network")
     
     private init() {}
     

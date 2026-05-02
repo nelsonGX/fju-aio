@@ -7,7 +7,7 @@ actor SISService {
     private let baseURL = "https://travellerlink.fju.edu.tw"
     private let authService = SISAuthService.shared
     private let networkService = NetworkService.shared
-    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.fju.aio", category: "SIS")
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "SIS")
     
     private init() {}
     

@@ -14,7 +14,7 @@ enum ProfileQRService {
     // Used as the CloudKit record name so it's consistent across sessions.
 
     static func stableDeviceToken() -> String {
-        let key = "com.fju.aio.stableDeviceToken"
+        let key = "com.nelsongx.apps.fju-aio.stableDeviceToken"
         if let existing = try? KeychainManager.shared.retrieveString(for: key) {
             return existing
         }

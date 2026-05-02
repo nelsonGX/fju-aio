@@ -5,7 +5,7 @@ actor ClassroomScheduleService {
     static let shared = ClassroomScheduleService()
 
     private let remoteURL = URL(string: "https://github.com/FJU-Devs/fju-classroom-schedule/raw/refs/heads/main/fju_day_courses.json")!
-    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.fju.aio", category: "ClassroomSchedule")
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "ClassroomSchedule")
     private var cachedIndex: ClassroomScheduleIndex?
 
     private init() {}

@@ -3,7 +3,7 @@ import os.log
 
 final class HTMLParser: Sendable {
     nonisolated static let shared = HTMLParser()
-    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.fju.aio", category: "HTMLParser")
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "HTMLParser")
     
     private init() {}
     

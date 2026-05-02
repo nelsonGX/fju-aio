@@ -9,7 +9,7 @@ actor EstuCourseService {
     private let authService = EstuAuthService.shared
     private let htmlParser = HTMLParser.shared
     private let tronClassAPIService = TronClassAPIService.shared
-    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.fju.aio", category: "EstuCourse")
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "EstuCourse")
     
     private init() {}
     

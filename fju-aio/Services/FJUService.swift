@@ -16,7 +16,7 @@ final class FJUService: FJUServiceProtocol, @unchecked Sendable {
     private var mode: ServiceMode
     private let mockService: MockFJUService
     private let realService: RealFJUService
-    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.fju.aio", category: "FJUService")
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "FJUService")
     
     // MARK: - Initialization
     

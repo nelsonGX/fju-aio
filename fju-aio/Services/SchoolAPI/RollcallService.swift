@@ -7,7 +7,7 @@ actor RollcallService {
 
     private let baseURL = "https://elearn2.fju.edu.tw"
     private let authService = TronClassAuthService.shared
-    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.fju.aio", category: "Rollcall")
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "Rollcall")
 
     private init() {}
 

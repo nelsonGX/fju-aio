@@ -34,7 +34,7 @@ actor EstuAuthService {
     // MARK: - Public API
     
     func login(username: String, password: String) async throws -> EstuSession {
-        let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.fju.aio", category: "EstuAuth")
+        let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "EstuAuth")
         logger.info("🔐 Starting Estu login for user: \(username, privacy: .private)")
         
         do {
@@ -57,7 +57,7 @@ actor EstuAuthService {
     }
     
     func getValidSession() async throws -> EstuSession {
-        let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.fju.aio", category: "EstuAuth")
+        let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "EstuAuth")
         logger.info("🔍 Checking for valid Estu session...")
         
         if let session = currentSession, !session.isExpired, session.loginResponseHTML != nil {
@@ -71,7 +71,7 @@ actor EstuAuthService {
     
     /// Force a fresh login, clearing any cached session. Use when cookies are lost (e.g. app restart).
     func forceRelogin() async throws -> EstuSession {
-        let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.fju.aio", category: "EstuAuth")
+        let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "EstuAuth")
         logger.info("🔄 Force re-login...")
         
         currentSession = nil
@@ -91,7 +91,7 @@ actor EstuAuthService {
     }
     
     func logout() throws {
-        let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.fju.aio", category: "EstuAuth")
+        let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "EstuAuth")
         logger.info("👋 Logging out from Estu...")
         currentSession = nil
         // Clear ESTU cookies from cookie storage
@@ -204,7 +204,7 @@ actor EstuAuthService {
     private func saveSession(_ session: EstuSession) {
         if let data = try? JSONEncoder().encode(session) {
             UserDefaults.standard.set(data, forKey: sessionKey)
-            let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.fju.aio", category: "EstuAuth")
+            let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "EstuAuth")
             logger.info("💾 Session saved")
         }
     }
@@ -213,12 +213,12 @@ actor EstuAuthService {
         guard let data = UserDefaults.standard.data(forKey: sessionKey),
               let session = try? JSONDecoder().decode(EstuSession.self, from: data),
               !session.isExpired else {
-            let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.fju.aio", category: "EstuAuth")
+            let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "EstuAuth")
             logger.info("⚠️ No valid session in storage")
             return
         }
         currentSession = session
-        let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.fju.aio", category: "EstuAuth")
+        let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "EstuAuth")
         logger.info("✅ Session loaded from storage")
     }
     

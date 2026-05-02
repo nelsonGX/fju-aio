@@ -11,7 +11,7 @@ actor CloudKitProfileService {
 
     private let container = CKContainer(identifier: "iCloud.com.nelsongx.apps.fju-aio")
     private var publicDB: CKDatabase { container.publicCloudDatabase }
-    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.fju.aio", category: "CloudKit")
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "CloudKit")
 
     private init() {}
 

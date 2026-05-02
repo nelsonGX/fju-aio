@@ -11,7 +11,7 @@ final class AuthenticationManager {
     private let sisAuthService = SISAuthService.shared
     private let estuAuthService = EstuAuthService.shared
     private let fjuService = FJUService.shared
-    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.fju.aio", category: "AuthManager")
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "AuthManager")
     
     init() {
         Task {

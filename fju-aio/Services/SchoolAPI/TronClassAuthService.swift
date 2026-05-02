@@ -8,7 +8,7 @@ actor TronClassAuthService {
     private let credentialStore = CredentialStore.shared
     private let networkService = NetworkService.shared
     private let sessionKey = "com.fju.tronclass.session"
-    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.fju.aio", category: "Auth")
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "Auth")
     
     private var currentSession: TronClassSession?
     

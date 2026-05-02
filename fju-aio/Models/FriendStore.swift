@@ -13,8 +13,8 @@ final class FriendStore {
 
     private(set) var friends: [FriendRecord] = []
 
-    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.fju.aio", category: "FriendStore")
-    private let friendsKey = "com.fju.aio.friends"
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "FriendStore")
+    private let friendsKey = "com.nelsongx.apps.fju-aio.friends"
 
     private init() { load() }
 

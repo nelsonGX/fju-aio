@@ -22,7 +22,7 @@ actor DormAuthService {
     private let apiBase = "https://api-dorm.fju.edu.tw/api"
     private let credentialStore = CredentialStore.shared
     private let sessionKey = "com.fju.dorm.session"
-    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.fju.aio", category: "DormAuth")
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "DormAuth")
 
     private var currentSession: DormSession?
 
