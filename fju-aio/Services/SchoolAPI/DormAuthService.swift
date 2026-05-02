@@ -21,6 +21,7 @@ actor DormAuthService {
 
     private let apiBase = "https://api-dorm.fju.edu.tw/api"
     private let credentialStore = CredentialStore.shared
+    private let keychain = KeychainManager.shared
     private let sessionKey = "com.fju.dorm.session"
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "DormAuth")
 
@@ -103,6 +104,7 @@ actor DormAuthService {
 
     func clearSession() {
         currentSession = nil
+        try? keychain.delete(for: sessionKey)
         UserDefaults.standard.removeObject(forKey: sessionKey)
         logger.info("🗑️ Dorm session cleared")
     }
@@ -143,16 +145,32 @@ actor DormAuthService {
 
     private func saveSession(_ session: DormSession) {
         if let data = try? JSONEncoder().encode(session) {
-            UserDefaults.standard.set(data, forKey: sessionKey)
+            try? keychain.save(data, for: sessionKey)
+            UserDefaults.standard.removeObject(forKey: sessionKey)
         }
     }
 
     private func loadSession() {
+        if let data = try? keychain.retrieve(for: sessionKey),
+           let session = try? JSONDecoder().decode(DormSession.self, from: data) {
+            if !session.isExpired {
+                currentSession = session
+                logger.info("✅ Dorm session loaded from Keychain")
+                return
+            }
+            try? keychain.delete(for: sessionKey)
+        }
+
         guard let data = UserDefaults.standard.data(forKey: sessionKey),
               let session = try? JSONDecoder().decode(DormSession.self, from: data),
-              !session.isExpired else { return }
+              !session.isExpired else {
+            UserDefaults.standard.removeObject(forKey: sessionKey)
+            return
+        }
+
         currentSession = session
-        logger.info("✅ Dorm session loaded from storage")
+        saveSession(session)
+        logger.info("✅ Dorm session migrated from UserDefaults to Keychain")
     }
 }
 

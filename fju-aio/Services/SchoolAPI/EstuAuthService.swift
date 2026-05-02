@@ -8,6 +8,7 @@ actor EstuAuthService {
     private let loginPath = "/CheckSelList/HisListNew.aspx"
     private let sessionKey = "com.fju.estu.session"
     private let credentialStore = CredentialStore.shared
+    private let keychain = KeychainManager.shared
     private let htmlParser = HTMLParser.shared
     
     /// Direct reference to cookie storage (URLSessionConfiguration is copied, so we keep our own ref)
@@ -98,6 +99,7 @@ actor EstuAuthService {
         if let url = URL(string: "\(baseURL)\(loginPath)") {
             cookieStorage.cookies(for: url)?.forEach { cookieStorage.deleteCookie($0) }
         }
+        try? keychain.delete(for: sessionKey)
         UserDefaults.standard.removeObject(forKey: sessionKey)
         logger.info("✅ Logout complete")
     }
@@ -203,23 +205,40 @@ actor EstuAuthService {
     
     private func saveSession(_ session: EstuSession) {
         if let data = try? JSONEncoder().encode(session) {
-            UserDefaults.standard.set(data, forKey: sessionKey)
+            try? keychain.save(data, for: sessionKey)
+            UserDefaults.standard.removeObject(forKey: sessionKey)
             let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "EstuAuth")
-            logger.info("💾 Session saved")
+            logger.info("💾 Session saved to Keychain")
         }
     }
     
     private func loadSession() {
-        guard let data = UserDefaults.standard.data(forKey: sessionKey),
-              let session = try? JSONDecoder().decode(EstuSession.self, from: data),
-              !session.isExpired else {
-            let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "EstuAuth")
+        let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "EstuAuth")
+
+        if let data = try? keychain.retrieve(for: sessionKey),
+           let session = try? JSONDecoder().decode(EstuSession.self, from: data) {
+            if !session.isExpired {
+                currentSession = session
+                logger.info("✅ Session loaded from Keychain")
+                return
+            }
+            try? keychain.delete(for: sessionKey)
+        }
+
+        guard let data = UserDefaults.standard.data(forKey: sessionKey) else {
             logger.info("⚠️ No valid session in storage")
             return
         }
+
+        guard let session = try? JSONDecoder().decode(EstuSession.self, from: data), !session.isExpired else {
+            UserDefaults.standard.removeObject(forKey: sessionKey)
+            logger.info("⚠️ No valid session in storage")
+            return
+        }
+
         currentSession = session
-        let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "EstuAuth")
-        logger.info("✅ Session loaded from storage")
+        saveSession(session)
+        logger.info("✅ Session migrated from UserDefaults to Keychain")
     }
     
     func getSessionCookies() -> [HTTPCookie] {

@@ -29,7 +29,7 @@ final class KeychainManager: Sendable {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: key,
             kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         ]
         
         let status = SecItemAdd(query as CFDictionary, nil)
@@ -72,6 +72,7 @@ final class KeychainManager: Sendable {
             throw KeychainError.invalidData
         }
         
+        try? update(data, for: key)
         return data
     }
     
@@ -92,7 +93,8 @@ final class KeychainManager: Sendable {
         ]
         
         let attributes: [String: Any] = [
-            kSecValueData as String: data
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         ]
         
         let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)

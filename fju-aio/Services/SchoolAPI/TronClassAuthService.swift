@@ -6,6 +6,7 @@ actor TronClassAuthService {
     
     private let baseURL = "https://elearn2.fju.edu.tw"
     private let credentialStore = CredentialStore.shared
+    private let keychain = KeychainManager.shared
     private let networkService = NetworkService.shared
     private let sessionKey = "com.fju.tronclass.session"
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "Auth")
@@ -78,6 +79,7 @@ actor TronClassAuthService {
         logger.info("👋 Logging out...")
         currentSession = nil
         try credentialStore.deleteLDAPCredentials()
+        try? keychain.delete(for: sessionKey)
         UserDefaults.standard.removeObject(forKey: sessionKey)
         logger.info("✅ Logout complete")
     }
@@ -244,20 +246,37 @@ actor TronClassAuthService {
     
     private func saveSession(_ session: TronClassSession) {
         if let data = try? JSONEncoder().encode(session) {
-            UserDefaults.standard.set(data, forKey: sessionKey)
-            logger.info("💾 Session saved to UserDefaults")
+            try? keychain.save(data, for: sessionKey)
+            UserDefaults.standard.removeObject(forKey: sessionKey)
+            logger.info("💾 Session saved to Keychain")
         }
     }
     
     private func loadSession() {
-        guard let data = UserDefaults.standard.data(forKey: sessionKey),
-              let session = try? JSONDecoder().decode(TronClassSession.self, from: data),
-              !session.isExpired else {
+        if let data = try? keychain.retrieve(for: sessionKey),
+           let session = try? JSONDecoder().decode(TronClassSession.self, from: data) {
+            if !session.isExpired {
+                currentSession = session
+                logger.info("✅ Session loaded from Keychain")
+                return
+            }
+            try? keychain.delete(for: sessionKey)
+        }
+
+        guard let data = UserDefaults.standard.data(forKey: sessionKey) else {
             logger.info("⚠️ No valid session found in storage")
             return
         }
+
+        guard let session = try? JSONDecoder().decode(TronClassSession.self, from: data), !session.isExpired else {
+            UserDefaults.standard.removeObject(forKey: sessionKey)
+            logger.info("⚠️ No valid session found in storage")
+            return
+        }
+
         currentSession = session
-        logger.info("✅ Session loaded from storage")
+        saveSession(session)
+        logger.info("✅ Session migrated from UserDefaults to Keychain")
     }
 }
 
