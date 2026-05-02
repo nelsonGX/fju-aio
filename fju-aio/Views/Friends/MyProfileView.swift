@@ -80,7 +80,7 @@ struct MyProfileView: View {
                 .disabled(sisSession == nil)
 
                 if isPublished {
-                    Text("你的資料已公開，朋友可透過 QR Code 找到你。關閉後將刪除雲端資料。")
+                    Text("你的資料已公開，其他人可以在課表中找到你、查看你的連結；你可以跟同學加好友，互相分享課表。關閉後將刪除雲端資料。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
