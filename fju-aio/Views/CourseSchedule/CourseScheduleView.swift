@@ -4,7 +4,6 @@ import os.log
 struct CourseScheduleView: View {
     @Environment(\.fjuService) private var service
     @Environment(SyncStatusManager.self) private var syncStatus
-    @AppStorage("myProfile.displayName") private var myDisplayName = ""
     @State private var courses: [Course] = []
     @State private var isLoading = true
     @State private var availableSemesters: [String] = []
@@ -485,19 +484,19 @@ struct CourseScheduleView: View {
 
     private func estimatedSelfLabelHeight(for course: Course) -> CGFloat {
         let duration = course.endPeriod - course.startPeriod + 1
-        let nameLineCount: CGFloat = course.name.count > 7 && duration > 1 ? 2 : 1
+        let nameLineCount: CGFloat = course.name.count > 7 && duration > 1 ? 1.5 : 0.8
         let locationHeight: CGFloat = duration > 1 ? 13 : 0
-        return 10 + nameLineCount * 17 + locationHeight
+        return 10 + nameLineCount * 10 + locationHeight
     }
 
     private func estimatedFriendLabelHeight(for course: PublicCourseInfo) -> CGFloat {
         let duration = course.endPeriod - course.startPeriod + 1
         let locationHeight: CGFloat = duration > 1 && !course.location.isEmpty ? 11 : 0
-        return 10 + 18 + locationHeight
+        return 10 + locationHeight
     }
 
     private var selfCourseBadgeText: String {
-        ownerBadgeText(myDisplayName, fallback: "我")
+        ownerBadgeText("我", fallback: "我")
     }
 
     private func ownerBadgeText(_ name: String, fallback: String) -> String {
