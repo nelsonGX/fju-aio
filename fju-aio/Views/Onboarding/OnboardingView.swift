@@ -450,7 +450,7 @@ private struct OnboardingProfilePage: View {
                 VStack(spacing: 8) {
                     Text("建立個人檔案")
                         .font(.system(size: 24, weight: .bold, design: .rounded))
-                    Text("讓朋友透過 QR Code 找到你（可略過）")
+                    Text("讓其他人可以在課表中找到你、查看你的連結；讓你可以跟同學加好友，互相分享課表（可略過）")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -501,9 +501,8 @@ private struct OnboardingProfilePage: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("啟用公開資料")
                                 .font(.body)
-                            Text(isPublished
-                                 ? "朋友可透過 QR Code 找到你。開始使用後將上傳至雲端。"
-                                 : "開啟後，朋友可掃描你的 QR Code 加好友。")
+                            isPublished ? nil :
+                            Text("開啟後，你可以加入個人社群連結、分享課表給朋友。")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
