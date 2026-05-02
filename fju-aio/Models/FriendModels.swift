@@ -208,6 +208,14 @@ nonisolated struct FriendRecord: Codable, Identifiable, Hashable, Sendable {
     /// True when LDAP credentials for this friend are stored in Keychain.
     /// Not persisted in JSON — recomputed from Keychain on load.
     var hasStoredCredentials: Bool = false
+
+    static func == (lhs: FriendRecord, rhs: FriendRecord) -> Bool {
+        lhs.id == rhs.id
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
 }
 
 // MARK: - Group Rollcall Credential Payload

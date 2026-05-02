@@ -41,59 +41,16 @@ private struct FriendListContent: View {
     @Environment(AuthenticationManager.self) private var authManager
     @State private var friendStore = FriendStore.shared
     @State private var showAddFriend = false
-    @State private var showMyQR = false
     @State private var nearbyService = NearbyFriendService.shared
     @State private var scanError: String?
     @State private var lastScannedInfo: String?
     @State private var sisSession: SISSession?
     @State private var isLoadingSession = false
-    @State private var isQRButtonLoading = false
     @State private var sessionError: String?
     @AppStorage("friendList.shareCredentialQRCode") private var shareCredentialQRCode = false
 
     var body: some View {
         List {
-            // MARK: My QR Card
-            Section {
-                Button {
-                    guard !isQRButtonLoading else { return }
-                    Task { await openQRSheet() }
-                } label: {
-                    HStack(spacing: 14) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(AppTheme.accent.opacity(0.12))
-                                .frame(width: 44, height: 44)
-                            if isQRButtonLoading {
-                                ProgressView()
-                                    .controlSize(.small)
-                                    .tint(AppTheme.accent)
-                            } else {
-                                Image(systemName: "qrcode")
-                                    .font(.title2)
-                                    .foregroundStyle(AppTheme.accent)
-                            }
-                        }
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("顯示我的 QR Code")
-                                .font(.body.weight(.medium))
-                                .foregroundStyle(.primary)
-                            Text("讓朋友掃描來加你為好友")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.tertiary)
-                    }
-                    .padding(.vertical, 4)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            }
-
             // MARK: 你的朋友
             Section("你的朋友") {
                 if friendStore.friends.isEmpty {
@@ -103,7 +60,7 @@ private struct FriendListContent: View {
                             Image(systemName: "person.2.slash")
                                 .font(.title2)
                                 .foregroundStyle(.secondary)
-                            Text("點右上角掃描對方的個人 QR Code 來新增好友")
+                            Text("點右上角加號來新增好友")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .multilineTextAlignment(.center)
@@ -114,7 +71,9 @@ private struct FriendListContent: View {
                     .listRowBackground(Color.clear)
                 } else {
                     ForEach(friendStore.friends) { friend in
-                        NavigationLink(value: friend) {
+                        NavigationLink {
+                            FriendDetailView(friend: friend)
+                        } label: {
                             FriendRow(friend: friend)
                         }
                     }
@@ -148,18 +107,10 @@ private struct FriendListContent: View {
         } message: {
             Text(scanError ?? lastScannedInfo ?? "")
         }
-        .sheet(isPresented: $showMyQR) {
-            MyProfileQRSheet(
-                session: sisSession,
-                sharesCredentials: $shareCredentialQRCode,
-                isLoading: isLoadingSession,
-                errorMessage: sessionError,
-                onRetry: { Task { await loadSession(force: true) } }
-            )
-        }
         .sheet(isPresented: $showAddFriend) {
             AddFriendSheet(
                 session: sisSession,
+                sharesCredentials: $shareCredentialQRCode,
                 isLoadingSession: isLoadingSession,
                 sessionError: sessionError,
                 onRetrySession: { Task { await loadSession(force: true) } },
@@ -177,17 +128,6 @@ private struct FriendListContent: View {
         }
         .task { await loadSession() }
         .refreshable { await refreshAll() }
-    }
-
-    @MainActor
-    private func openQRSheet() async {
-        isQRButtonLoading = true
-        defer { isQRButtonLoading = false }
-        // Fetch session if not already available
-        if sisSession == nil {
-            await loadSession(force: true)
-        }
-        showMyQR = true
     }
 
     @MainActor
@@ -324,195 +264,11 @@ private struct FriendListContent: View {
     }
 }
 
-// MARK: - My Profile QR Sheet (inline, shown from friend list)
-
-private struct MyProfileQRSheet: View {
-    let session: SISSession?
-    @Binding var sharesCredentials: Bool
-    let isLoading: Bool
-    let errorMessage: String?
-    let onRetry: () -> Void
-    @Environment(\.dismiss) private var dismiss
-    @State private var nearbyService = NearbyFriendService.shared
-    @State private var friendStore = FriendStore.shared
-
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: 24) {
-                Text(sharesCredentials ? "讓朋友掃描來取得點名授權，同時可加你為好友" : "讓朋友掃描來加你為好友")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
-
-                if let session,
-                   let image = makeQRImage(session: session) {
-                    Image(uiImage: image)
-                        .interpolation(.none)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 260, height: 260)
-                        .padding()
-                        .background(.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
-                        .shadow(radius: 8)
-                } else if isLoading {
-                    ProgressView("載入中...")
-                        .frame(width: 260, height: 260)
-                } else {
-                    ContentUnavailableView {
-                        Label("無法顯示 QR Code", systemImage: "qrcode")
-                    } description: {
-                        Text(unavailableMessage)
-                    } actions: {
-                        Button("重試", action: onRetry)
-                            .buttonStyle(.borderedProminent)
-                    }
-                    .frame(minHeight: 260)
-                }
-
-                if let session {
-                    VStack(spacing: 4) {
-                        Text(session.userName).font(.headline)
-                        Text(session.empNo).font(.subheadline).foregroundStyle(.secondary)
-                    }
-                }
-
-                if !pendingIncomingRequests.isEmpty {
-                    VStack(alignment: .leading, spacing: 10) {
-                        ForEach(pendingIncomingRequests) { peer in
-                            HStack(spacing: 12) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("\(peer.displayName) 已加你為好友")
-                                        .font(.body.weight(.medium))
-                                    Text("要加回對方嗎？")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                Button("加好友") {
-                                    addIncomingPeer(peer)
-                                }
-                                .buttonStyle(.borderedProminent)
-                                .controlSize(.small)
-                            }
-                        }
-                    }
-                    .padding(12)
-                    .background(.green.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
-                    .padding(.horizontal)
-                }
-
-                // Share credentials toggle
-                Toggle(isOn: $sharesCredentials) {
-                    Label("包含點名授權", systemImage: "person.badge.key.fill")
-                }
-                .foregroundStyle(sharesCredentials ? .orange : .primary)
-                .padding(.horizontal)
-
-                if sharesCredentials {
-                    HStack(alignment: .top, spacing: 8) {
-                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                        Text("這個 QR Code 含有帳號密碼。分享後對方可以替你點名，請勿任意外流。")
-                            .font(.caption)
-                            .foregroundStyle(.orange)
-                    }
-                    .padding(12)
-                    .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
-                    .padding(.horizontal)
-                }
-                Spacer()
-            }
-            .padding(.top, 32)
-            .navigationTitle("個人 QR Code")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("關閉") { dismiss() } }
-            }
-        }
-        .task {
-            guard let session else { return }
-            nearbyService.start(profile: ProfileQRService.makeMutualPayload(
-                userId: session.userId,
-                empNo: session.empNo,
-                displayName: session.userName
-            ))
-        }
-        .onDisappear {
-            nearbyService.stop()
-        }
-    }
-
-    private var pendingIncomingRequests: [NearbyPeerProfile] {
-        nearbyService.incomingAddRequests.filter { !friendStore.isFriend(recordName: $0.id) }
-    }
-
-    private func makeQRImage(session: SISSession) -> UIImage? {
-        if sharesCredentials {
-            guard let credentials = try? CredentialStore.shared.retrieveLDAPCredentials() else { return nil }
-            // Combined QR: embed both profile info and credential info
-            // We use the group_rollcall type which already carries displayName/userId,
-            // and the scanner in FriendListView also accepts profile payloads.
-            // Instead, we create a combined payload via groupRollcall (credential sharing takes priority).
-            return ProfileQRService.generateQRImage(
-                for: ProfileQRService.makeCombinedPayload(
-                    userId: session.userId,
-                    empNo: session.empNo,
-                    displayName: session.userName,
-                    username: credentials.username,
-                    password: credentials.password
-                ),
-                size: 600
-            )
-        }
-
-        return ProfileQRService.generateQRImage(
-            for: ProfileQRService.makeMutualPayload(
-                userId: session.userId,
-                empNo: session.empNo,
-                displayName: session.userName
-            ),
-            size: 600
-        )
-    }
-
-    private var unavailableMessage: String {
-        if let errorMessage { return errorMessage }
-        if sharesCredentials && !CredentialStore.shared.hasLDAPCredentials() {
-            return "尚未儲存 LDAP 帳號密碼，無法產生點名授權 QR Code。"
-        }
-        return "缺少學校帳號資料。"
-    }
-
-    private func addIncomingPeer(_ peer: NearbyPeerProfile) {
-        guard !friendStore.isFriend(recordName: peer.id) else {
-            nearbyService.dismissIncomingRequest(id: peer.id)
-            return
-        }
-        let payload = ProfileQRPayload(
-            version: 1,
-            type: "profile",
-            cloudKitRecordName: peer.id,
-            empNo: peer.empNo,
-            displayName: peer.displayName,
-            userId: peer.userId
-        )
-        friendStore.addFriend(from: payload)
-        nearbyService.dismissIncomingRequest(id: peer.id)
-        Task {
-            if let profile = try? await CloudKitProfileService.shared.fetchProfile(recordName: peer.id) {
-                await MainActor.run {
-                    friendStore.updateCachedProfile(profile, for: peer.id)
-                }
-            }
-        }
-    }
-}
-
 // MARK: - Add Friend Sheet
 
 private struct AddFriendSheet: View {
     let session: SISSession?
+    @Binding var sharesCredentials: Bool
     let isLoadingSession: Bool
     let sessionError: String?
     let onRetrySession: () -> Void
@@ -531,6 +287,30 @@ private struct AddFriendSheet: View {
     var body: some View {
         NavigationStack {
             List {
+                Section {
+                    myQRCodeView
+
+                    Toggle(isOn: $sharesCredentials) {
+                        Label("包含點名授權", systemImage: "person.badge.key.fill")
+                    }
+                    .foregroundStyle(sharesCredentials ? .orange : .primary)
+
+                    if sharesCredentials {
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                            Text("這個 QR Code 含有帳號密碼。分享後對方可以替你點名，請勿任意外流。")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
+                        .padding(.vertical, 4)
+                    }
+                } header: {
+                    Text("我的 QR Code")
+                } footer: {
+                    Text("讓朋友掃描這個 QR Code 來加你為好友。")
+                }
+
                 Section {
                     Button {
                         showScanner = true
@@ -647,6 +427,46 @@ private struct AddFriendSheet: View {
         "\(session?.empNo ?? "no-session")-\(nearbyStartNonce.uuidString)"
     }
 
+    @ViewBuilder
+    private var myQRCodeView: some View {
+        VStack(spacing: 12) {
+            if let session, let image = makeQRImage(session: session) {
+                Image(uiImage: image)
+                    .interpolation(.none)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 220, height: 220)
+                    .padding()
+                    .background(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+
+                VStack(spacing: 3) {
+                    Text(session.userName)
+                        .font(.headline)
+                    Text(session.empNo)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            } else if isLoadingSession {
+                ProgressView("載入中...")
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 260)
+            } else {
+                ContentUnavailableView {
+                    Label("無法顯示 QR Code", systemImage: "qrcode")
+                } description: {
+                    Text(qrUnavailableMessage)
+                } actions: {
+                    Button("重試", action: onRetrySession)
+                        .buttonStyle(.borderedProminent)
+                }
+                .frame(minHeight: 220)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+    }
+
     private var nearbyStatusRow: some View {
         HStack(spacing: 12) {
             ZStack {
@@ -708,6 +528,39 @@ private struct AddFriendSheet: View {
         }
         nearbyStartNonce = UUID()
         startNearby()
+    }
+
+    private func makeQRImage(session: SISSession) -> UIImage? {
+        if sharesCredentials {
+            guard let credentials = try? CredentialStore.shared.retrieveLDAPCredentials() else { return nil }
+            return ProfileQRService.generateQRImage(
+                for: ProfileQRService.makeCombinedPayload(
+                    userId: session.userId,
+                    empNo: session.empNo,
+                    displayName: session.userName,
+                    username: credentials.username,
+                    password: credentials.password
+                ),
+                size: 600
+            )
+        }
+
+        return ProfileQRService.generateQRImage(
+            for: ProfileQRService.makeMutualPayload(
+                userId: session.userId,
+                empNo: session.empNo,
+                displayName: session.userName
+            ),
+            size: 600
+        )
+    }
+
+    private var qrUnavailableMessage: String {
+        if let sessionError { return sessionError }
+        if sharesCredentials && !CredentialStore.shared.hasLDAPCredentials() {
+            return "尚未儲存 LDAP 帳號密碼，無法產生點名授權 QR Code。"
+        }
+        return "缺少學校帳號資料。"
     }
 
     private func peerRow(_ peer: NearbyPeerProfile, isAdded: Bool) -> some View {
