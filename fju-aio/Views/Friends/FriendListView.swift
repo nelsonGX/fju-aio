@@ -126,14 +126,22 @@ private struct FriendListContent: View {
                 }
             )
         }
-        .task { await loadSession() }
+        .task {
+            await loadSession()
+            await refreshFriendProfiles()
+        }
         .refreshable { await refreshAll() }
     }
 
     @MainActor
     private func refreshAll() async {
         await loadSession(force: true)
-        // Re-fetch CloudKit profiles for all friends to get latest data
+        await refreshFriendProfiles()
+    }
+
+    @MainActor
+    private func refreshFriendProfiles() async {
+        // Re-fetch CloudKit profiles for all friends to get latest avatars/profile data
         await withTaskGroup(of: Void.self) { group in
             for friend in friendStore.friends {
                 group.addTask {
