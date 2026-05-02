@@ -568,6 +568,9 @@ private struct OnboardingProfilePage: View {
         isSaving = true
         publishError = nil
         defer { isSaving = false }
+        if profileAvatarURL == nil {
+            await loadAvatar()
+        }
 
         let effectiveName = displayName.isEmpty ? session.userName : displayName
         let snapshot: FriendScheduleSnapshot? = shareSchedule ? await buildSnapshot(session: session) : nil
@@ -576,6 +579,7 @@ private struct OnboardingProfilePage: View {
             userId: session.userId,
             empNo: session.empNo,
             displayName: effectiveName,
+            avatarURLString: profileAvatarURL?.absoluteString,
             bio: bio.isEmpty ? nil : bio,
             socialLinks: socialLinks,
             scheduleSnapshot: snapshot,

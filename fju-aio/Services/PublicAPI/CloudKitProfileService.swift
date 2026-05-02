@@ -36,6 +36,7 @@ actor CloudKitProfileService {
         record[PublicProfile.CKField.userId] = profile.userId as CKRecordValue
         record[PublicProfile.CKField.empNo] = profile.empNo as CKRecordValue
         record[PublicProfile.CKField.displayName] = profile.displayName as CKRecordValue
+        record[PublicProfile.CKField.avatarURLString] = profile.avatarURLString as CKRecordValue?
         record[PublicProfile.CKField.bio] = profile.bio as CKRecordValue?
         record[PublicProfile.CKField.lastUpdated] = profile.lastUpdated as CKRecordValue
 
@@ -158,6 +159,7 @@ actor CloudKitProfileService {
             userId: userId,
             empNo: empNo,
             displayName: displayName,
+            avatarURLString: record[PublicProfile.CKField.avatarURLString] as? String,
             bio: record[PublicProfile.CKField.bio] as? String,
             socialLinks: links,
             scheduleSnapshot: snapshot,

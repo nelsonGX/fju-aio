@@ -453,7 +453,7 @@ struct EnrollmentListView: View {
         .sheet(item: $selectedMember) { member in
             EnrollmentMemberDetailView(
                 enrollment: member,
-                avatarURL: avatars["\(member.user.id)"],
+                avatarURL: avatars["\(member.user.id)"] ?? publicProfilesByEmpNo[member.user.user_no]?.avatarURLString,
                 publicProfile: publicProfilesByEmpNo[member.user.user_no]
             )
         }
@@ -471,7 +471,8 @@ struct EnrollmentListView: View {
                 ZStack(alignment: .bottomTrailing) {
                     SmallAvatarView(
                         name: enrollment.user.name,
-                        url: avatars["\(enrollment.user.id)"].flatMap { URL(string: $0) },
+                        url: (avatars["\(enrollment.user.id)"] ?? publicProfilesByEmpNo[enrollment.user.user_no]?.avatarURLString)
+                            .flatMap { URL(string: $0) },
                         size: 40
                     )
                     if hasPublicProfile {

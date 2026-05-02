@@ -142,7 +142,12 @@ nonisolated struct PublicProfile: Codable, Identifiable, Hashable, Sendable {
     let userId: Int
     let empNo: String
     var displayName: String
+    var avatarURLString: String?
     var bio: String?
+
+    var avatarURL: URL? {
+        avatarURLString.flatMap { URL(string: $0) }
+    }
 
     // Dynamic social links — user-defined list
     var socialLinks: [SocialLink]
@@ -158,6 +163,7 @@ nonisolated struct PublicProfile: Codable, Identifiable, Hashable, Sendable {
         static let userId = "userId"
         static let empNo = "empNo"
         static let displayName = "displayName"
+        static let avatarURLString = "avatarURLString"
         static let bio = "bio"
         static let socialLinksData = "socialLinksData"
         static let scheduleSnapshotData = "scheduleSnapshotData"

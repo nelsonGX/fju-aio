@@ -790,16 +790,13 @@ struct FriendRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Circle()
-                .fill(AppTheme.accent.opacity(0.15))
-                .frame(width: 44, height: 44)
-                .overlay {
-                    Text(String(friend.displayName.prefix(1)))
-                        .font(.headline)
-                        .foregroundStyle(AppTheme.accent)
-                }
+            ProfileAvatarView(
+                name: friend.cachedProfile?.displayName ?? friend.displayName,
+                avatarURL: friend.cachedProfile?.avatarURL,
+                size: 44
+            )
             VStack(alignment: .leading, spacing: 2) {
-                Text(friend.displayName).font(.body)
+                Text(friend.cachedProfile?.displayName ?? friend.displayName).font(.body)
                 Text(friend.empNo).font(.caption).foregroundStyle(.secondary)
             }
         }

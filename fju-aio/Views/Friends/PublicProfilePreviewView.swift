@@ -6,7 +6,7 @@ struct PublicProfilePreviewView: View {
 
     var body: some View {
         List {
-            PublicProfileHeaderSection(profile: profile, avatarURL: avatarURL)
+            PublicProfileHeaderSection(profile: profile, avatarURL: avatarURL ?? profile.avatarURL)
             PublicProfileInfoSections(profile: profile)
         }
         .listStyle(.insetGrouped)

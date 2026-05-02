@@ -24,14 +24,11 @@ struct FriendDetailView: View {
             // MARK: Identity
             Section {
                 HStack(spacing: 16) {
-                    Circle()
-                        .fill(AppTheme.accent.opacity(0.15))
-                        .frame(width: 56, height: 56)
-                        .overlay {
-                            Text(String(friend.displayName.prefix(1)))
-                                .font(.title2.weight(.semibold))
-                                .foregroundStyle(AppTheme.accent)
-                        }
+                    ProfileAvatarView(
+                        name: profile?.displayName ?? friend.displayName,
+                        avatarURL: profile?.avatarURL ?? currentFriend.cachedProfile?.avatarURL,
+                        size: 56
+                    )
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text(profile?.displayName ?? friend.displayName)

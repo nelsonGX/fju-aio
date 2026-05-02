@@ -238,6 +238,9 @@ struct MyProfileView: View {
     private func publishProfileNow() async {
         guard let session = sisSession, isPublished else { return }
         publishError = nil
+        if profileAvatarURL == nil {
+            await loadProfileAvatar()
+        }
 
         await syncStatus.withSync("儲存中...") {
             let effectiveName = displayName.isEmpty ? session.userName : displayName
@@ -251,6 +254,7 @@ struct MyProfileView: View {
                 userId: session.userId,
                 empNo: session.empNo,
                 displayName: effectiveName,
+                avatarURLString: profileAvatarURL?.absoluteString,
                 bio: bio.isEmpty ? nil : bio,
                 socialLinks: socialLinks,
                 scheduleSnapshot: snapshot,
@@ -339,6 +343,7 @@ struct MyProfileView: View {
             userId: session.userId,
             empNo: session.empNo,
             displayName: displayName.isEmpty ? session.userName : displayName,
+            avatarURLString: profileAvatarURL?.absoluteString,
             bio: bio.isEmpty ? nil : bio,
             socialLinks: socialLinks,
             scheduleSnapshot: shareSchedule ? buildCachedSnapshot(session: session) : nil,
