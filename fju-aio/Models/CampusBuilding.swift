@@ -32,6 +32,13 @@ enum CampusBuildingRegistry {
         CampusBuilding(code: "LM", name: "利瑪竇大樓", coordinate: .init(latitude: 25.0373258, longitude: 121.4313698)),
         CampusBuilding(code: "SL", name: "羅耀拉大樓", coordinate: .init(latitude: 25.0364315, longitude: 121.4308763)),
         CampusBuilding(code: "JS", name: "濟時樓", coordinate: .init(latitude: 25.0359519, longitude: 121.4301413)),
+        CampusBuilding(code: "LW", name: "樹德樓", coordinate: .init(latitude: 25.0363999, longitude: 121.4317131)),
+        CampusBuilding(code: "BS", name: "伯達樓", coordinate: .init(latitude: 25.0368641, longitude: 121.4316675)),
+        CampusBuilding(code: "LA", name: "外語學院A", coordinate: .init(latitude: 25.0348592, longitude: 121.4324400)),
+        CampusBuilding(code: "LB", name: "外語學院B", coordinate: .init(latitude: 25.0350366, longitude: 121.4320832)),
+        CampusBuilding(code: "FG", name: "德芳外語大樓", coordinate: .init(latitude: 25.0350901, longitude: 121.4327404)),
+        CampusBuilding(code: "LH", name: "理工綜合教室", coordinate: .init(latitude: 25.0344752, longitude: 121.4325795)),
+        CampusBuilding(code: "A", name: "耕莘樓", coordinate: .init(latitude: 25.0337510, longitude: 121.4332768)),
     ]
 
     /// Keywords found in course location strings that map to a building code.
@@ -56,6 +63,13 @@ enum CampusBuildingRegistry {
         "利瑪竇大樓": "LM",
         "羅耀拉大樓": "SL",
         "濟時樓": "JS",
+        "樹德樓": "LW",
+        "伯達樓": "BS",
+        "外語學院A": "LA",
+        "外語學院B": "LB",
+        "德芳外語大樓": "FG",
+        "理工綜合教室": "LH",
+        "耕莘樓": "A",
     ]
 
     /// Returns the campus building that best matches a course location string,
