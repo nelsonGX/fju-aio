@@ -123,12 +123,7 @@ final class NearbyFriendService: NSObject {
         addRequestAttemptsByRecordName[recordName] = 0
         logger.info("📨 Queued add request for \(recordName, privacy: .public)")
 
-        if let peripheral = peripheralsByRecordName[recordName],
-           let characteristic = addRequestCharacteristicsByRecordName[recordName] {
-            writeAddRequest(to: peripheral, characteristic: characteristic, recordName: recordName)
-        } else if centralManager?.state == .poweredOn {
-            startScanning()
-        }
+        attemptAddRequestDelivery(recordName: recordName)
     }
 
     // MARK: - Peripheral setup (called once CBPeripheralManager is powered on)
@@ -181,11 +176,54 @@ final class NearbyFriendService: NSObject {
         let attempt = (addRequestAttemptsByRecordName[recordName] ?? 0) + 1
         addRequestAttemptsByRecordName[recordName] = attempt
 
+        guard peripheral.state == .connected else {
+            logger.info("📨 Add request attempt \(attempt, privacy: .public) waiting for reconnect to \(recordName, privacy: .public)")
+            reconnectForAddRequest(recordName: recordName, peripheral: peripheral)
+            scheduleAddRequestRetryIfNeeded(recordName: recordName)
+            return
+        }
+
         let writeType: CBCharacteristicWriteType = characteristic.properties.contains(.write) ? .withResponse : .withoutResponse
         peripheral.writeValue(data, for: characteristic, type: writeType)
         logger.info("📨 Sent add request attempt \(attempt, privacy: .public) to \(recordName, privacy: .public)")
 
         scheduleAddRequestRetryIfNeeded(recordName: recordName)
+    }
+
+    private func attemptAddRequestDelivery(recordName: String) {
+        guard pendingAddRequestRecordNames.contains(recordName) else { return }
+
+        if let peripheral = peripheralsByRecordName[recordName],
+           let characteristic = addRequestCharacteristicsByRecordName[recordName] {
+            writeAddRequest(to: peripheral, characteristic: characteristic, recordName: recordName)
+            return
+        }
+
+        if let peripheral = peripheralsByRecordName[recordName] {
+            reconnectForAddRequest(recordName: recordName, peripheral: peripheral)
+        } else if centralManager?.state == .poweredOn {
+            startScanning()
+        }
+    }
+
+    private func reconnectForAddRequest(recordName: String, peripheral: CBPeripheral) {
+        guard pendingAddRequestRecordNames.contains(recordName),
+              centralManager?.state == .poweredOn else { return }
+
+        switch peripheral.state {
+        case .connected:
+            peripheral.discoverServices([kServiceUUID])
+        case .connecting:
+            break
+        default:
+            addRequestCharacteristicsByRecordName[recordName] = nil
+            if !pendingPeripherals.contains(where: { $0.identifier == peripheral.identifier }) {
+                pendingPeripherals.append(peripheral)
+            }
+            peripheral.delegate = self
+            centralManager?.connect(peripheral, options: nil)
+            startScanning()
+        }
     }
 
     private func scheduleAddRequestRetryIfNeeded(recordName: String) {
@@ -206,10 +244,8 @@ final class NearbyFriendService: NSObject {
             try? await Task.sleep(nanoseconds: 1_500_000_000)
             await MainActor.run {
                 guard let self,
-                      self.pendingAddRequestRecordNames.contains(recordName),
-                      let peripheral = self.peripheralsByRecordName[recordName],
-                      let characteristic = self.addRequestCharacteristicsByRecordName[recordName] else { return }
-                self.writeAddRequest(to: peripheral, characteristic: characteristic, recordName: recordName)
+                      self.pendingAddRequestRecordNames.contains(recordName) else { return }
+                self.attemptAddRequestDelivery(recordName: recordName)
             }
         }
     }
@@ -340,12 +376,28 @@ extension NearbyFriendService: CBCentralManagerDelegate {
             self.logger.error("❌ Failed to connect: \(error?.localizedDescription ?? "unknown", privacy: .public)")
             self.pendingPeripherals.removeAll { $0 == peripheral }
             self.seenPeripheralIDs.remove(peripheral.identifier)
+
+            for recordName in self.recordNames(for: peripheral) where self.pendingAddRequestRecordNames.contains(recordName) {
+                self.addRequestCharacteristicsByRecordName[recordName] = nil
+                self.scheduleAddRequestRetryIfNeeded(recordName: recordName)
+                self.startScanning()
+            }
         }
     }
 
     nonisolated func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
         Task { @MainActor in
             self.pendingPeripherals.removeAll { $0 == peripheral }
+            self.seenPeripheralIDs.remove(peripheral.identifier)
+
+            for recordName in self.recordNames(for: peripheral) {
+                self.addRequestCharacteristicsByRecordName[recordName] = nil
+                if self.pendingAddRequestRecordNames.contains(recordName) {
+                    self.logger.info("📨 Disconnected before add request delivery — will reconnect to \(recordName, privacy: .public)")
+                    self.scheduleAddRequestRetryIfNeeded(recordName: recordName)
+                    self.startScanning()
+                }
+            }
         }
     }
 }
@@ -377,7 +429,7 @@ extension NearbyFriendService: CBPeripheralDelegate {
                 for (recordName, storedPeripheral) in self.peripheralsByRecordName where storedPeripheral == peripheral {
                     self.addRequestCharacteristicsByRecordName[recordName] = addRequestChar
                     if self.pendingAddRequestRecordNames.contains(recordName) {
-                        self.writeAddRequest(to: peripheral, characteristic: addRequestChar, recordName: recordName)
+                        self.attemptAddRequestDelivery(recordName: recordName)
                     }
                 }
             }
@@ -421,7 +473,7 @@ extension NearbyFriendService: CBPeripheralDelegate {
                let addRequestChar = service.characteristics?.first(where: { $0.uuid == kAddRequestCharUUID }) {
                 self.addRequestCharacteristicsByRecordName[peer.id] = addRequestChar
                 if self.pendingAddRequestRecordNames.contains(peer.id) {
-                    self.writeAddRequest(to: peripheral, characteristic: addRequestChar, recordName: peer.id)
+                    self.attemptAddRequestDelivery(recordName: peer.id)
                 }
             }
 
@@ -447,6 +499,12 @@ extension NearbyFriendService: CBPeripheralDelegate {
             } else {
                 self.markAddRequestDelivered(recordName: recordName)
             }
+        }
+    }
+
+    private func recordNames(for peripheral: CBPeripheral) -> [String] {
+        peripheralsByRecordName.compactMap { recordName, storedPeripheral in
+            storedPeripheral.identifier == peripheral.identifier ? recordName : nil
         }
     }
 }
