@@ -75,7 +75,12 @@ struct OnboardingView: View {
 
     private var scheduleAndLivePage: some View {
         VStack(spacing: 0) {
-            OnboardingPreviewVideo(resourceName: "onboarding_step_1_preview", icon: "calendar", color: .blue)
+            OnboardingPreviewVideo(
+                resourceName: "onboarding_step_1_preview",
+                icon: "calendar",
+                color: .blue,
+                isActive: pageIndex == 1
+            )
                 .padding(.horizontal, 20)
                 .padding(.top, 40)
 
@@ -123,7 +128,12 @@ struct OnboardingView: View {
 
     private var mapPage: some View {
         VStack(spacing: 0) {
-            OnboardingPreviewVideo(resourceName: "onboarding_step_2_preview", icon: "map.fill", color: .green)
+            OnboardingPreviewVideo(
+                resourceName: "onboarding_step_2_preview",
+                icon: "map.fill",
+                color: .green,
+                isActive: pageIndex == 2
+            )
                 .padding(.horizontal, 20)
                 .padding(.top, 40)
 
@@ -328,6 +338,7 @@ private struct OnboardingPreviewVideo: View {
     let resourceName: String
     let icon: String
     let color: Color
+    let isActive: Bool
 
     @State private var player = AVQueuePlayer()
     @State private var looper: AVPlayerLooper?
@@ -339,10 +350,13 @@ private struct OnboardingPreviewVideo: View {
                 PlayerLayerView(player: player)
                     .onAppear {
                         configurePlayerIfNeeded(url: url)
-                        player.play()
+                        updatePlayback()
                     }
                     .onDisappear {
                         player.pause()
+                    }
+                    .onChange(of: isActive) { _, _ in
+                        updatePlayback()
                     }
             } else {
                 mediaFallback
@@ -376,6 +390,16 @@ private struct OnboardingPreviewVideo: View {
         player.isMuted = true
         player.actionAtItemEnd = .none
         didConfigurePlayer = true
+    }
+
+    private func updatePlayback() {
+        if isActive {
+            player.seek(to: .zero)
+            player.play()
+        } else {
+            player.pause()
+            player.seek(to: .zero)
+        }
     }
 }
 
