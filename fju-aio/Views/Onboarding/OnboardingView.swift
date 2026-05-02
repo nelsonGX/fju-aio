@@ -75,7 +75,7 @@ struct OnboardingView: View {
 
     private var scheduleAndLivePage: some View {
         VStack(spacing: 0) {
-            OnboardingPreviewVideo(resourceName: "onboarding_step_1_preview")
+            OnboardingPreviewVideo(resourceName: "onboarding_step_1_preview", icon: "calendar", color: .blue)
                 .padding(.horizontal, 20)
                 .padding(.top, 40)
 
@@ -123,7 +123,7 @@ struct OnboardingView: View {
 
     private var mapPage: some View {
         VStack(spacing: 0) {
-            mediaPlaceholder(icon: "map.fill", color: .green, assetName: "onboarding_map")
+            OnboardingPreviewVideo(resourceName: "onboarding_step_2_preview", icon: "map.fill", color: .green)
                 .padding(.horizontal, 20)
                 .padding(.top, 40)
 
@@ -326,6 +326,8 @@ struct OnboardingView: View {
 
 private struct OnboardingPreviewVideo: View {
     let resourceName: String
+    let icon: String
+    let color: Color
 
     @State private var player = AVQueuePlayer()
     @State private var looper: AVPlayerLooper?
@@ -354,11 +356,11 @@ private struct OnboardingPreviewVideo: View {
     private var mediaFallback: some View {
         ZStack {
             RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
-                .fill(Color.blue.opacity(0.08))
+                .fill(color.opacity(0.08))
             VStack(spacing: 10) {
-                Image(systemName: "play.rectangle.fill")
+                Image(systemName: icon)
                     .font(.system(size: 52))
-                    .foregroundStyle(Color.blue.opacity(0.4))
+                    .foregroundStyle(color.opacity(0.4))
                 Text("預覽影片")
                     .font(.caption)
                     .foregroundStyle(Color.secondary.opacity(0.4))
