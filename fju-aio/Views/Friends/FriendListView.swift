@@ -282,16 +282,20 @@ private struct AddFriendSheet: View {
     @State private var friendStore = FriendStore.shared
     @State private var showScanner = false
     @State private var addedIds: Set<String> = []
+    @State private var acceptedInvitationPeers: [NearbyPeerProfile] = []
     @State private var nearbyStartNonce = UUID()
     @AppStorage("friendList.autoAddBackFriends") private var autoAddBackFriends = true
 
     var body: some View {
         NavigationStack {
             List {
-                if !incomingRequests.isEmpty {
-                    Section("邀請") {
+                if !incomingRequests.isEmpty || !acceptedInvitationPeers.isEmpty {
+                    Section("好友邀請") {
                         ForEach(incomingRequests) { peer in
                             incomingRequestRow(peer)
+                        }
+                        ForEach(acceptedInvitationPeers) { peer in
+                            acceptedInvitationRow(peer)
                         }
                     }
                 }
@@ -413,7 +417,10 @@ private struct AddFriendSheet: View {
     }
 
     private var incomingRequests: [NearbyPeerProfile] {
-        nearbyService.incomingAddRequests.filter { !friendStore.isFriend(recordName: $0.id) }
+        nearbyService.incomingAddRequests.filter { request in
+            !friendStore.isFriend(recordName: request.id) &&
+            !acceptedInvitationPeers.contains(where: { accepted in accepted.id == request.id })
+        }
     }
 
     private var visiblePeers: [NearbyPeerProfile] {
@@ -540,8 +547,14 @@ private struct AddFriendSheet: View {
         for peer in incomingRequests {
             addedIds.insert(peer.id)
             onAcceptIncomingPeer(peer)
+            rememberAcceptedInvitation(peer)
             nearbyService.dismissIncomingRequest(id: peer.id)
         }
+    }
+
+    private func rememberAcceptedInvitation(_ peer: NearbyPeerProfile) {
+        guard !acceptedInvitationPeers.contains(where: { $0.id == peer.id }) else { return }
+        acceptedInvitationPeers.insert(peer, at: 0)
     }
 
     private func makeQRImage(session: SISSession) -> UIImage? {
@@ -632,14 +645,43 @@ private struct AddFriendSheet: View {
                 guard !friendStore.isFriend(recordName: peer.id) else {
                     nearbyService.dismissIncomingRequest(id: peer.id)
                     addedIds.insert(peer.id)
+                    rememberAcceptedInvitation(peer)
                     return
                 }
                 addedIds.insert(peer.id)
                 onAcceptIncomingPeer(peer)
+                rememberAcceptedInvitation(peer)
                 nearbyService.dismissIncomingRequest(id: peer.id)
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func acceptedInvitationRow(_ peer: NearbyPeerProfile) -> some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(Color.green.opacity(0.15))
+                    .frame(width: 44, height: 44)
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(peer.displayName)
+                    .font(.body)
+                Text("已加好友")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Label("已完成", systemImage: "checkmark")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.green)
         }
         .padding(.vertical, 2)
     }
