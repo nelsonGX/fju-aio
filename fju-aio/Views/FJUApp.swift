@@ -31,28 +31,32 @@ struct FJUApp: App {
                         titleText: "啟動中...",
                         statusText: "檢查登入狀態...",
                         showsSkipButton: false,
-                        onSkip: {}
+                        onSkip: {},
+                        isPreloading: false
                     )
                 } else if authManager.isAuthenticated && authManager.isLoading {
                     LaunchScreenView(
                         titleText: "登出中...",
                         statusText: "清除本機、CloudKit 與快取資料...",
                         showsSkipButton: false,
-                        onSkip: {}
+                        onSkip: {},
+                        isPreloading: false
                     )
                 } else if isCompletingOnboarding {
                     LaunchScreenView(
                         titleText: "準備使用...",
                         statusText: onboardingStatusText,
                         showsSkipButton: false,
-                        onSkip: {}
+                        onSkip: {},
+                        isPreloading: false
                     )
                 } else if isPreloading && !hasSkippedPreload && !isWidgetQuickLaunch {
                     LaunchScreenView(
                         titleText: "同步資料中...",
                         statusText: preloadStatusText,
                         showsSkipButton: showsSkipPreloadButton,
-                        onSkip: skipPreload
+                        onSkip: skipPreload,
+                        isPreloading: true
                     )
                 } else if authManager.isAuthenticated || (authManager.isCheckingAuth && isWidgetQuickLaunch) {
                     if hasCompletedOnboarding {
@@ -318,6 +322,7 @@ private struct LaunchScreenView: View {
     let statusText: String
     let showsSkipButton: Bool
     let onSkip: () -> Void
+    let isPreloading : Bool
 
     var body: some View {
         ZStack {
@@ -344,6 +349,12 @@ private struct LaunchScreenView: View {
 
                 LaunchProgressBar()
                     .frame(width: 184, height: 5)
+                
+                isPreloading ? Text("你可以在 設定 > 一般 > 啟動時先同步資料 略過這個頁面")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(3)
+                : nil
 
                 if showsSkipButton {
                     Button("略過 (稍後同步資料)") {
