@@ -284,7 +284,7 @@ private struct CredentialScannerSheet: View {
                         onScanned(payload.sharerUserId, payload.sharerDisplayName, payload.username, payload.password)
                     case .combined(let payload):
                         onScanned(payload.userId, payload.displayName, payload.username, payload.password)
-                    case .profile:
+                    case .profile, .mutual:
                         scanError = "這是個人 QR Code，請讓對方開啟「包含點名授權」選項後再顯示 QR Code"
                     case .unknown:
                         scanError = "無法識別此 QR Code"

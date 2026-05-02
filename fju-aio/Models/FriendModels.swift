@@ -250,11 +250,26 @@ struct ProfileQRPayload: Codable, Sendable {
     let userId: Int
 }
 
+// MARK: - Mutual Add QR Payload
+// Both sides scan once. Person A shows this QR; when B scans it, B's device
+// immediately shows their own MutualQR for A to scan back.
+// Each scan adds the other person as a friend on that device.
+
+struct MutualQRPayload: Codable, Sendable {
+    let version: Int
+    let type: String                // "mutual"
+    let cloudKitRecordName: String
+    let empNo: String
+    let displayName: String
+    let userId: Int
+}
+
 // MARK: - QR Code Type Discriminator
 
 enum ScannedQRType {
     case profile(ProfileQRPayload)
     case groupRollcall(GroupRollcallQRPayload)
     case combined(CombinedQRPayload)
+    case mutual(MutualQRPayload)
     case unknown(String)
 }

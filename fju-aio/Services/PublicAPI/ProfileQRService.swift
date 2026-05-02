@@ -61,6 +61,23 @@ enum ProfileQRService {
         )
     }
 
+    // MARK: - Generate Mutual Add QR Payload
+
+    static func makeMutualPayload(
+        userId: Int,
+        empNo: String,
+        displayName: String
+    ) -> MutualQRPayload {
+        MutualQRPayload(
+            version: 1,
+            type: "mutual",
+            cloudKitRecordName: stableDeviceToken(),
+            empNo: empNo,
+            displayName: displayName,
+            userId: userId
+        )
+    }
+
     // MARK: - Generate Combined QR Payload (profile + credentials)
 
     static func makeCombinedPayload(
@@ -123,6 +140,10 @@ enum ProfileQRService {
             case "combined":
                 if let payload = try? JSONDecoder().decode(CombinedQRPayload.self, from: data) {
                     return .combined(payload)
+                }
+            case "mutual":
+                if let payload = try? JSONDecoder().decode(MutualQRPayload.self, from: data) {
+                    return .mutual(payload)
                 }
             default:
                 break

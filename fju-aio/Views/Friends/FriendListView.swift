@@ -42,6 +42,7 @@ private struct FriendListContent: View {
     @State private var friendStore = FriendStore.shared
     @State private var showScanner = false
     @State private var showMyQR = false
+    @State private var showNearby = false
     @State private var scanError: String?
     @State private var lastScannedInfo: String?
     @State private var sisSession: SISSession?
@@ -127,10 +128,17 @@ private struct FriendListContent: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button {
-                    showScanner = true
-                } label: {
-                    Image(systemName: "qrcode.viewfinder")
+                HStack(spacing: 4) {
+                    Button {
+                        showNearby = true
+                    } label: {
+                        Image(systemName: "antenna.radiowaves.left.and.right")
+                    }
+                    Button {
+                        showScanner = true
+                    } label: {
+                        Image(systemName: "qrcode.viewfinder")
+                    }
                 }
             }
         }
@@ -143,10 +151,13 @@ private struct FriendListContent: View {
             Text(scanError ?? lastScannedInfo ?? "")
         }
         .sheet(isPresented: $showScanner) {
-            AddFriendScannerSheet { qrString in
-                showScanner = false
-                handleScanned(qrString)
-            }
+            MutualAddSheet(
+                session: sisSession,
+                onAddedFriend: { qrString in
+                    showScanner = false
+                    handleScanned(qrString)
+                }
+            )
         }
         .sheet(isPresented: $showMyQR) {
             MyProfileQRSheet(
@@ -156,6 +167,20 @@ private struct FriendListContent: View {
                 errorMessage: sessionError,
                 onRetry: { Task { await loadSession(force: true) } }
             )
+        }
+        .sheet(isPresented: $showNearby) {
+            NearbyAddView(session: sisSession) { peer in
+                let payload = ProfileQRPayload(
+                    version: 1,
+                    type: "profile",
+                    cloudKitRecordName: peer.id,
+                    empNo: peer.empNo,
+                    displayName: peer.displayName,
+                    userId: peer.userId
+                )
+                friendStore.addFriend(from: payload)
+                fetchAndCacheProfile(recordName: peer.id)
+            }
         }
         .task { await loadSession() }
         .refreshable { await refreshAll() }
@@ -207,27 +232,18 @@ private struct FriendListContent: View {
         let myToken = ProfileQRService.stableDeviceToken()
         switch ProfileQRService.parse(qrString: qrString) {
         case .profile(let payload):
-            // Prevent adding yourself
             if payload.cloudKitRecordName == myToken {
                 scanError = "這是你自己的 QR Code，無法加自己為好友。"
                 return
             }
             friendStore.addFriend(from: payload)
             lastScannedInfo = "已新增好友：\(payload.displayName)（\(payload.empNo)）"
-            Task {
-                if let profile = try? await CloudKitProfileService.shared.fetchProfile(recordName: payload.cloudKitRecordName) {
-                    await MainActor.run {
-                        friendStore.updateCachedProfile(profile, for: payload.cloudKitRecordName)
-                    }
-                }
-            }
-        case .combined(let payload):
-            // Prevent adding yourself
+            fetchAndCacheProfile(recordName: payload.cloudKitRecordName)
+        case .mutual(let payload):
             if payload.cloudKitRecordName == myToken {
                 scanError = "這是你自己的 QR Code，無法加自己為好友。"
                 return
             }
-            // Add as friend (using profile portion)
             let profilePayload = ProfileQRPayload(
                 version: payload.version,
                 type: "profile",
@@ -237,22 +253,41 @@ private struct FriendListContent: View {
                 userId: payload.userId
             )
             friendStore.addFriend(from: profilePayload)
-            // Also store rollcall credentials
+            lastScannedInfo = "已新增好友：\(payload.displayName)（\(payload.empNo)）"
+            fetchAndCacheProfile(recordName: payload.cloudKitRecordName)
+        case .combined(let payload):
+            if payload.cloudKitRecordName == myToken {
+                scanError = "這是你自己的 QR Code，無法加自己為好友。"
+                return
+            }
+            let profilePayload = ProfileQRPayload(
+                version: payload.version,
+                type: "profile",
+                cloudKitRecordName: payload.cloudKitRecordName,
+                empNo: payload.empNo,
+                displayName: payload.displayName,
+                userId: payload.userId
+            )
+            friendStore.addFriend(from: profilePayload)
             if let friendId = friendStore.friends.first(where: { $0.id == payload.cloudKitRecordName })?.id {
                 friendStore.saveCredentials(for: friendId, username: payload.username, password: payload.password)
             }
             lastScannedInfo = "已新增好友：\(payload.displayName)（\(payload.empNo)）並儲存點名授權"
-            Task {
-                if let profile = try? await CloudKitProfileService.shared.fetchProfile(recordName: payload.cloudKitRecordName) {
-                    await MainActor.run {
-                        friendStore.updateCachedProfile(profile, for: payload.cloudKitRecordName)
-                    }
-                }
-            }
+            fetchAndCacheProfile(recordName: payload.cloudKitRecordName)
         case .groupRollcall:
             scanError = "這是點名 QR Code，請在簽到頁面使用。"
         case .unknown:
             scanError = "無法識別此 QR Code。"
+        }
+    }
+
+    private func fetchAndCacheProfile(recordName: String) {
+        Task {
+            if let profile = try? await CloudKitProfileService.shared.fetchProfile(recordName: recordName) {
+                await MainActor.run {
+                    friendStore.updateCachedProfile(profile, for: recordName)
+                }
+            }
         }
     }
 }
@@ -358,7 +393,7 @@ private struct MyProfileQRSheet: View {
         }
 
         return ProfileQRService.generateQRImage(
-            for: ProfileQRService.makeProfilePayload(
+            for: ProfileQRService.makeMutualPayload(
                 userId: session.userId,
                 empNo: session.empNo,
                 displayName: session.userName
@@ -376,36 +411,135 @@ private struct MyProfileQRSheet: View {
     }
 }
 
-// MARK: - Add Friend Scanner Sheet
+// MARK: - Mutual Add Sheet
+// Two-phase flow:
+//   Phase 1 — scan friend's mutual QR → they are added locally
+//   Phase 2 — show your own mutual QR for them to scan back
 
-private struct AddFriendScannerSheet: View {
-    let onScan: (String) -> Void
+private struct MutualAddSheet: View {
+    let session: SISSession?
+    /// Called with the raw QR string once the first scan succeeds.
+    let onAddedFriend: (String) -> Void
+
     @Environment(\.dismiss) private var dismiss
+    @State private var phase: Phase = .scanning
+
+    enum Phase {
+        case scanning
+        case showMyQR(scannedName: String)
+    }
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                QRScannerView(onScan: onScan).ignoresSafeArea()
-                VStack {
-                    Spacer()
-                    Text("掃描朋友的個人 QR Code")
-                        .font(.subheadline).foregroundStyle(.white)
-                        .padding()
-                        .background(.black.opacity(0.5))
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                        .padding(.bottom, 48)
-                }
-            }
-            .navigationTitle("掃描 QR Code")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbarBackground(.black.opacity(0.6), for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { dismiss() }.foregroundStyle(.white)
-                }
+            switch phase {
+            case .scanning:
+                scannerPhase
+            case .showMyQR(let name):
+                myQRPhase(scannedName: name)
             }
         }
+    }
+
+    // MARK: Phase 1 — Camera scanner
+
+    private var scannerPhase: some View {
+        ZStack {
+            QRScannerView { qrString in
+                guard case .mutual(let payload) = ProfileQRService.parse(qrString: qrString),
+                      payload.cloudKitRecordName != ProfileQRService.stableDeviceToken() else {
+                    // Fall back to legacy handling for non-mutual QRs
+                    onAddedFriend(qrString)
+                    return
+                }
+                phase = .showMyQR(scannedName: payload.displayName)
+                onAddedFriend(qrString)
+            }
+            .ignoresSafeArea()
+
+            VStack {
+                Spacer()
+                Text("掃描朋友的個人 QR Code")
+                    .font(.subheadline).foregroundStyle(.white)
+                    .padding()
+                    .background(.black.opacity(0.5))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .padding(.bottom, 48)
+            }
+        }
+        .navigationTitle("掃描 QR Code")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbarBackground(.black.opacity(0.6), for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("取消") { dismiss() }.foregroundStyle(.white)
+            }
+        }
+    }
+
+    // MARK: Phase 2 — Show own QR for friend to scan back
+
+    private func myQRPhase(scannedName: String) -> some View {
+        VStack(spacing: 24) {
+            VStack(spacing: 6) {
+                Text("已新增 \(scannedName)")
+                    .font(.headline)
+                Text("現在讓對方掃描你的 QR Code")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.top, 8)
+
+            if let session, let image = makeMutualQRImage(session: session) {
+                Image(uiImage: image)
+                    .interpolation(.none)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 260, height: 260)
+                    .padding()
+                    .background(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .shadow(radius: 8)
+            } else {
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(.secondary.opacity(0.15))
+                    .frame(width: 260, height: 260)
+                    .overlay { ProgressView() }
+            }
+
+            if let session {
+                VStack(spacing: 4) {
+                    Text(session.userName).font(.headline)
+                    Text(session.empNo).font(.subheadline).foregroundStyle(.secondary)
+                }
+            }
+
+            Spacer()
+
+            Button("完成") { dismiss() }
+                .buttonStyle(.borderedProminent)
+                .padding(.bottom, 32)
+        }
+        .padding(.horizontal)
+        .navigationTitle("我的 QR Code")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("關閉") { dismiss() }
+            }
+        }
+    }
+
+    private func makeMutualQRImage(session: SISSession) -> UIImage? {
+        ProfileQRService.generateQRImage(
+            for: ProfileQRService.makeMutualPayload(
+                userId: session.userId,
+                empNo: session.empNo,
+                displayName: session.userName
+            ),
+            size: 600
+        )
     }
 }
 

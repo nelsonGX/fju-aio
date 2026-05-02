@@ -41,8 +41,12 @@
 	</array>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>用於將學期行事曆事件加入您的行事曆</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>用於透過藍牙與附近的朋友交換資料</string>
 	<key>NSCameraUsageDescription</key>
 	<string>用於掃描 QR Code 以進行課程點名</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>用於在區域網路中尋找附近的朋友</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>用於在校園地圖上顯示您的所在位置</string>
 	<key>NSSupportsLiveActivities</key>

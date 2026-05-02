@@ -19,7 +19,19 @@ actor CloudKitProfileService {
 
     func publishProfile(_ profile: PublicProfile) async throws {
         let recordID = CKRecord.ID(recordName: profile.cloudKitRecordName)
-        let record = CKRecord(recordType: PublicProfile.CKField.recordType, recordID: recordID)
+
+        // Fetch the existing record so we have a valid recordChangeTag.
+        // Creating a brand-new CKRecord for an already-existing record causes
+        // CloudKit to silently drop the save under .ifServerRecordUnchanged policy.
+        let record: CKRecord
+        do {
+            record = try await publicDB.record(for: recordID)
+            logger.info("📥 Fetched existing CKRecord for update")
+        } catch let error as CKError where error.code == .unknownItem {
+            // Record doesn't exist yet — create fresh
+            record = CKRecord(recordType: PublicProfile.CKField.recordType, recordID: recordID)
+            logger.info("🆕 No existing record, creating new CKRecord")
+        }
 
         record[PublicProfile.CKField.userId] = profile.userId as CKRecordValue
         record[PublicProfile.CKField.empNo] = profile.empNo as CKRecordValue
@@ -29,15 +41,25 @@ actor CloudKitProfileService {
 
         if let linksData = try? JSONEncoder().encode(profile.socialLinks) {
             record[PublicProfile.CKField.socialLinksData] = linksData as CKRecordValue
+            logger.info("📎 socialLinksData: \(linksData.count, privacy: .public) bytes (\(profile.socialLinks.count, privacy: .public) links)")
         }
 
-        if let snapshot = profile.scheduleSnapshot,
-           let snapshotData = try? JSONEncoder().encode(snapshot) {
-            record[PublicProfile.CKField.scheduleSnapshotData] = snapshotData as CKRecordValue
+        if let snapshot = profile.scheduleSnapshot {
+            do {
+                let snapshotData = try JSONEncoder().encode(snapshot)
+                record[PublicProfile.CKField.scheduleSnapshotData] = snapshotData as CKRecordValue
+                logger.info("📅 scheduleSnapshotData: \(snapshotData.count, privacy: .public) bytes — semester=\(snapshot.semester, privacy: .public), courses=\(snapshot.courses.count, privacy: .public)")
+            } catch {
+                logger.error("❌ Failed to encode scheduleSnapshot: \(error.localizedDescription, privacy: .public)")
+            }
+        } else {
+            record[PublicProfile.CKField.scheduleSnapshotData] = nil
+            logger.info("📅 scheduleSnapshotData: cleared (snapshot is nil)")
         }
 
+        logger.info("☁️ Saving CKRecord — type=\(PublicProfile.CKField.recordType, privacy: .public), recordName=\(profile.cloudKitRecordName, privacy: .public)")
         _ = try await publicDB.modifyRecords(saving: [record], deleting: [])
-        logger.info("✅ Published profile for \(profile.displayName)")
+        logger.info("✅ Published profile for \(profile.displayName, privacy: .public)")
     }
 
     // MARK: - Fetch a Friend's Profile
