@@ -46,6 +46,20 @@ final class AppCache {
     func getCalendarEvents(semester: String) -> [CalendarEvent]? { calendarEvents[semester]?.data }
     func setCalendarEvents(_ data: [CalendarEvent], semester: String) { calendarEvents[semester] = (data, Date()) }
 
+    // MARK: - Search Helpers
+
+    /// Returns all courses across all cached semesters (deduplicated by course id).
+    func allCachedCourses() -> [Course] {
+        var seen = Set<String>()
+        return courses.values.flatMap(\.data).filter { seen.insert($0.id).inserted }
+    }
+
+    /// Returns all calendar events across all cached semesters (deduplicated by event id).
+    func allCachedCalendarEvents() -> [CalendarEvent] {
+        var seen = Set<String>()
+        return calendarEvents.values.flatMap(\.data).filter { seen.insert($0.id).inserted }
+    }
+
     // MARK: - Invalidation
     func invalidateAll() {
         courses = [:]
