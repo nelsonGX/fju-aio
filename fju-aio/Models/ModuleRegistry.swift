@@ -27,6 +27,8 @@ enum ModuleRegistry {
                   color: .red, category: .tools, type: .inApp(.semesterCalendar)),
         AppModule(id: "assignments", name: "作業 Todo", icon: "checklist",
                   color: .cyan, category: .tools, type: .inApp(.assignments)),
+        AppModule(id: "studentGuide", name: "學生指南", icon: "book.pages.fill",
+                  color: .indigo, category: .tools, type: .inApp(.studentGuide)),
 
         // Web links (academic)
         AppModule(id: "webTronClass", name: "TronClass", icon: "laptopcomputer",
@@ -38,6 +40,9 @@ enum ModuleRegistry {
         AppModule(id: "webWishCourseSelect", name: "全人志願選課系統", icon: "list.bullet.rectangle",
                   color: .orange, category: .academic,
                   type: .webLink(URL(string: "http://wishcourse.fju.edu.tw")!)),
+        AppModule(id: "webStudentPortal", name: "學生資訊入口網", icon: "person.fill",
+                  color: .orange, category: .academic,
+                  type: .webLink(URL(string: "https://portal.fju.edu.tw/student")!)),
 
         // In-app features (life)
         AppModule(id: "campusMap", name: "校園地圖", icon: "map.fill",
@@ -52,11 +57,20 @@ enum ModuleRegistry {
         AppModule(id: "webLibrary", name: "圖書館", icon: "books.vertical.fill",
                   color: .orange, category: .library,
                   type: .webLink(URL(string: "https://home.lib.fju.edu.tw/TC/")!)),
+        AppModule(id: "webEngNet", name: "EngNet", icon: "textformat.abc",
+                  color: .blue, category: .library,
+                  type: .webLink(URL(string: "http://engnet.fju.edu.tw")!)),
 
         // Web links (other)
         AppModule(id: "webAnnouncements", name: "學校官網", icon: "globe.fill",
                   color: .red, category: .other,
                   type: .webLink(URL(string: "https://www.fju.edu.tw")!)),
+        AppModule(id: "webDSA", name: "學務處", icon: "person.2.fill",
+                  color: .teal, category: .other,
+                  type: .webLink(URL(string: "http://www.dsa.fju.edu.tw")!)),
+        AppModule(id: "webScholarships", name: "獎助學金", icon: "dollarsign.circle.fill",
+                  color: .green, category: .other,
+                  type: .webLink(URL(string: "http://stuservice.fju.edu.tw/fjcugrant/")!)),
     ]
 
     // MARK: - Grouped by Category

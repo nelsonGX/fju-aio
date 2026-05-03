@@ -11,6 +11,7 @@ enum AppDestination: Hashable {
     case attendance
     case semesterCalendar
     case assignments
+    case studentGuide
     case checkIn
     case enrollmentCertificate
     case campusMap
@@ -28,6 +29,7 @@ enum AppDestination: Hashable {
         case "attendance":              self = .attendance
         case "semesterCalendar":        self = .semesterCalendar
         case "assignments":             self = .assignments
+        case "studentGuide":            self = .studentGuide
         case "checkIn":                 self = .checkIn
         case "enrollmentCertificate":   self = .enrollmentCertificate
         case "campusMap":               self = .campusMap
@@ -204,6 +206,7 @@ struct ContentView: View {
         case .attendance:       AttendanceView()
         case .semesterCalendar: SemesterCalendarView()
         case .assignments:      AssignmentsView()
+        case .studentGuide:     StudentGuideView()
         case .checkIn:                  CheckInView()
         case .enrollmentCertificate:    EnrollmentCertificateView()
         case .campusMap:                CampusMapView()

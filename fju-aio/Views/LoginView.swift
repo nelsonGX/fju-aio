@@ -114,6 +114,18 @@ struct LoginView: View {
                             .frame(maxWidth: .infinity)
                             .padding(.top, 4)
                         }
+                        
+                        Link(destination: URL(string: "http://smis.fju.edu.tw/DepartNew/Query.aspx")!) {
+                            HStack(spacing: 4) {
+                                Text("蛤？不知道學號？")
+                                    .fontWeight(.semibold)
+                                Image(systemName: "arrow.up.right")
+                                    .font(.caption.weight(.semibold))
+                            }
+                            .font(.footnote)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 4)
+                        }
 
                         Text("不是輔大的但想進去看看？用帳密 \"demo\" 登入")
                             .font(.footnote)
