@@ -212,6 +212,7 @@ struct OnboardingView: View {
                         .multilineTextAlignment(.center)
                     Text("首先這不是輔大官方寫的，我們也沒有拿到錢(QQ)。再來這個 App 只是做興趣的，我們不會蒐集您的任何資料。")
                         .font(.caption)
+                        .padding(16)
                 }
 
                 VStack(spacing: 12) {
