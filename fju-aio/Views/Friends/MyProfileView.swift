@@ -144,6 +144,7 @@ struct MyProfileView: View {
                 }
             }
         }
+        .adaptiveListContentMargins()
         .navigationTitle("我的資料")
         .navigationBarTitleDisplayMode(.inline)
         .overlay {

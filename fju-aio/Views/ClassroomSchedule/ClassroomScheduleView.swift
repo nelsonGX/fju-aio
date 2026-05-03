@@ -36,7 +36,8 @@ struct ClassroomScheduleView: View {
                     }
                 }
             }
-            .padding()
+            .readableContent()
+            .padding(.vertical, 16)
         }
         .background(Color(.systemGroupedBackground))
         .navigationTitle("教室課表")

@@ -146,6 +146,7 @@ struct FriendDetailView: View {
                 }
             }
         }
+        .adaptiveListContentMargins()
         .navigationTitle(profile?.displayName ?? friend.displayName)
         .navigationBarTitleDisplayMode(.inline)
         .task { await loadProfile() }

@@ -38,6 +38,7 @@ struct AllFunctionsView: View {
                 )
             }
         }
+        .adaptiveListContentMargins()
         .navigationTitle("全部功能")
         .searchable(
             text: $searchText,

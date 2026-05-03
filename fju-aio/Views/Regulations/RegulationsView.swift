@@ -53,6 +53,7 @@ struct RegulationsView: View {
                 }
             }
         }
+        .adaptiveListContentMargins()
         .navigationTitle("重要法規")
         .searchable(
             text: $searchText,

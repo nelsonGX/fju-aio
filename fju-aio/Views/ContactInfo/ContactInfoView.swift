@@ -56,6 +56,7 @@ struct ContactInfoView: View {
                 }
             }
         }
+        .adaptiveListContentMargins()
         .navigationTitle("常用聯絡資訊")
         .navigationBarTitleDisplayMode(.large)
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "搜尋單位、業務、電話或 Email")

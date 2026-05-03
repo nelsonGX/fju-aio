@@ -67,7 +67,8 @@ struct CourseScheduleView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView(.vertical, showsIndicators: false) {
-                    timetableGrid(screenWidth: geometry.size.width)
+                    timetableGrid(screenWidth: min(geometry.size.width, AppTheme.readableContentMaxWidth))
+                        .frame(maxWidth: .infinity, alignment: .center)
                 }
                 .refreshable {
                     await loadSemesters(forceRefresh: true)
@@ -1270,4 +1271,3 @@ private struct NTUTBoxExportSheet: View {
         }
     }
 }
-

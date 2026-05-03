@@ -53,6 +53,7 @@ struct StudentGuideView: View {
                 }
             }
         }
+        .adaptiveListContentMargins()
         .navigationTitle("學生指南")
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "搜尋選課、就貸、兵役、租屋...")
     }
@@ -134,6 +135,7 @@ struct GuideTopicDetailView: View {
                 }
             }
         }
+        .adaptiveListContentMargins()
         .navigationTitle(topic.title)
         .navigationBarTitleDisplayMode(.inline)
     }

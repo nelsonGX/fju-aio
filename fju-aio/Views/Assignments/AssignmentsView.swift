@@ -46,6 +46,7 @@ struct AssignmentsView: View {
                 }
             }
         }
+        .adaptiveListContentMargins()
         .navigationTitle("作業 Todo")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

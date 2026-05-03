@@ -202,6 +202,7 @@ struct SettingsView: View {
                 }
             }
         }
+        .adaptiveListContentMargins()
         .navigationTitle("設定")
         .navigationDestination(isPresented: $showDebugScreen) {
             DebugView()

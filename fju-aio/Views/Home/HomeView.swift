@@ -2,6 +2,7 @@ import SwiftUI
 
 struct HomeView: View {
     @Environment(\.fjuService) private var service
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(HomePreferences.self) private var preferences
     @Environment(SyncStatusManager.self) private var syncStatus
     @State private var todayCourses: [Course] = []
@@ -17,10 +18,13 @@ struct HomeView: View {
 
     private let cache = AppCache.shared
 
-    private let columns = [
-        GridItem(.flexible(), spacing: 12),
-        GridItem(.flexible(), spacing: 12),
-    ]
+    private var columns: [GridItem] {
+        [GridItem(.adaptive(minimum: 160, maximum: 240), spacing: 12)]
+    }
+
+    private var todayCourseCardWidth: CGFloat {
+        horizontalSizeClass == .regular ? 220 : 170
+    }
 
     var body: some View {
         ScrollView {
@@ -37,7 +41,7 @@ struct HomeView: View {
                     bulletinSection
                 }
             }
-            .padding(.horizontal)
+            .readableContent()
             .padding(.bottom, 24)
         }
         .background(Color(.systemGroupedBackground))
@@ -88,17 +92,6 @@ struct HomeView: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: 150)
 
-            // Decorative circle
-            Circle()
-                .fill(.white.opacity(0.08))
-                .frame(width: 180, height: 180)
-                .offset(x: 200, y: 30)
-
-            Circle()
-                .fill(.white.opacity(0.05))
-                .frame(width: 100, height: 100)
-                .offset(x: 260, y: -10)
-
             // Content
             HStack(alignment: .bottom) {
                 VStack(alignment: .leading, spacing: 4) {
@@ -119,6 +112,21 @@ struct HomeView: View {
             }
             .padding(20)
         }
+        .overlay(alignment: .topTrailing) {
+            Circle()
+                .fill(.white.opacity(0.08))
+                .frame(width: 180, height: 180)
+                .offset(x: 48, y: 24)
+                .allowsHitTesting(false)
+        }
+        .overlay(alignment: .topTrailing) {
+            Circle()
+                .fill(.white.opacity(0.05))
+                .frame(width: 100, height: 100)
+                .offset(x: -70, y: -18)
+                .allowsHitTesting(false)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
         .padding(.top, 8)
     }
 
@@ -256,7 +264,7 @@ struct HomeView: View {
             }
         }
         .padding(12)
-        .frame(width: 170, alignment: .leading)
+        .frame(width: todayCourseCardWidth, alignment: .leading)
         .background(Color(.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.smallCornerRadius))
         .overlay(
@@ -576,4 +584,3 @@ private struct SectionHeader: View {
         }
     }
 }
-

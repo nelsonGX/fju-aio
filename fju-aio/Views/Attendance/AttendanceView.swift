@@ -60,6 +60,7 @@ struct AttendanceView: View {
                 }
             }
         }
+        .adaptiveListContentMargins()
         .navigationTitle("出缺席查詢")
         .navigationBarTitleDisplayMode(.inline)
         .overlay {

@@ -56,6 +56,7 @@ struct GradesView: View {
                 }
             }
         }
+        .adaptiveListContentMargins()
         .navigationTitle("成績查詢")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

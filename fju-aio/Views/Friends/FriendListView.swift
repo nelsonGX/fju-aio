@@ -90,6 +90,7 @@ private struct FriendListContent: View {
                 }
             }
         }
+        .adaptiveListContentMargins()
         .navigationTitle("好友")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

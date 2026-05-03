@@ -175,6 +175,7 @@ struct CampusMapView: View {
                             }
                         }
                     )
+                    .frame(maxWidth: 520)
                     .padding(.horizontal, 16)
                     .padding(.bottom, 24)
                 }
@@ -190,6 +191,7 @@ struct CampusMapView: View {
                             }
                         }
                     )
+                    .frame(maxWidth: 520)
                     .padding(.horizontal, 16)
                     .padding(.bottom, 24)
                 }
@@ -204,6 +206,7 @@ struct CampusMapView: View {
                             }
                         }
                     }
+                    .frame(maxWidth: 520)
                     .padding(.horizontal, 16)
                     .padding(.bottom, 24)
                 }
@@ -350,10 +353,14 @@ private struct SearchOverlay: View {
             GlassEffectContainer(spacing: 8) {
                 searchContent
             }
+            .frame(maxWidth: 640)
+            .frame(maxWidth: .infinity, alignment: .center)
             .padding(.horizontal, 16)
             .padding(.top, 8)
         } else {
             searchContent
+                .frame(maxWidth: 640)
+                .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
         }

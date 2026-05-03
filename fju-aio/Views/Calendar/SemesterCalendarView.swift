@@ -98,6 +98,7 @@ struct SemesterCalendarView: View {
                 }
             }
         }
+        .adaptiveListContentMargins()
         .navigationTitle("學期行事曆")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

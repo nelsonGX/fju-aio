@@ -48,6 +48,7 @@ struct CheckInView: View {
                 .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
             }
         }
+        .adaptiveListContentMargins()
         .navigationTitle("課程簽到")
         .navigationBarTitleDisplayMode(.inline)
         .overlay { if isLoading { ProgressView() } }

@@ -136,7 +136,7 @@ struct LoginView: View {
                     }
                     .padding(.horizontal, 24)
                 }
-                .frame(maxWidth: .infinity)
+                .readableContent(maxWidth: 520)
             }
             .background(Color(.systemGroupedBackground))
             .navigationBarTitleDisplayMode(.inline)
