@@ -70,6 +70,7 @@ final class FriendStore {
         }
         friends.removeAll { $0.id == id }
         save()
+        WidgetCenter.shared.reloadTimelines(ofKind: "CourseScheduleWidget")
         logger.info("Removed friend \(id)")
     }
 

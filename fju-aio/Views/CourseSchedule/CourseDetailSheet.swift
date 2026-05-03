@@ -260,7 +260,10 @@ struct CourseDetailSheet: View {
                 }
                 result[profile.empNo] = profile
             }
-            PublicProfileCache.shared.store(Array(publicProfilesByEmpNo.values))
+            PublicProfileCache.shared.replaceProfiles(
+                for: studentEmpNos,
+                with: Array(publicProfilesByEmpNo.values)
+            )
         } catch {
             if cached.isEmpty {
                 publicProfilesByEmpNo = [:]

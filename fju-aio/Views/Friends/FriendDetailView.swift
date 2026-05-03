@@ -191,16 +191,21 @@ struct FriendDetailView: View {
         if let cached = friend.cachedProfile { profile = cached }
 
         do {
-            if var fresh = try await CloudKitProfileService.shared.fetchProfile(recordName: friend.id) {
-                if fresh.scheduleSnapshot == nil,
-                   let token = currentFriend.scheduleShareToken,
-                   let snapshot = try? await CloudKitProfileService.shared.fetchFriendSchedule(token: token),
-                   snapshot.ownerUserId == fresh.userId || snapshot.ownerDisplayName == fresh.displayName {
-                    fresh.scheduleSnapshot = snapshot
-                }
-                profile = fresh
-                FriendStore.shared.updateCachedProfile(fresh, for: friend.id)
+            guard var fresh = try await CloudKitProfileService.shared.fetchProfile(recordName: friend.id) else {
+                profile = nil
+                friendStore.removeFriend(id: friend.id)
+                loadError = "此朋友的公開資料已不存在，已從好友列表移除。"
+                return
             }
+
+            if fresh.scheduleSnapshot == nil,
+               let token = currentFriend.scheduleShareToken,
+               let snapshot = try? await CloudKitProfileService.shared.fetchFriendSchedule(token: token),
+               snapshot.ownerUserId == fresh.userId || snapshot.ownerDisplayName == fresh.displayName {
+                fresh.scheduleSnapshot = snapshot
+            }
+            profile = fresh
+            friendStore.updateCachedProfile(fresh, for: friend.id)
         } catch {
             if profile == nil {
                 loadError = "無法載入資料：\(error.localizedDescription)"

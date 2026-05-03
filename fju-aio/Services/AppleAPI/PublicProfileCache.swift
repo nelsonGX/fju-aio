@@ -37,6 +37,22 @@ struct PublicProfileCache {
         save(cache)
     }
 
+    func replaceProfiles(for empNos: [String], with profiles: [PublicProfile]) {
+        let requested = Set(empNos.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })
+        guard !requested.isEmpty else { return }
+
+        var cache = load()
+        for empNo in requested {
+            cache.removeValue(forKey: empNo)
+        }
+
+        let now = Date()
+        for profile in profiles {
+            cache[profile.empNo] = CacheEntry(profile: profile, cachedAt: now)
+        }
+        save(cache)
+    }
+
     func clear() {
         UserDefaults.standard.removeObject(forKey: key)
     }

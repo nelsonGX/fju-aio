@@ -167,7 +167,11 @@ actor CloudKitProfileService {
 
     func deleteFriendSchedule(token: String) async throws {
         let recordID = CKRecord.ID(recordName: friendScheduleRecordName(token: token))
-        _ = try await publicDB.modifyRecords(saving: [], deleting: [recordID])
+        do {
+            _ = try await publicDB.modifyRecords(saving: [], deleting: [recordID])
+        } catch let error as CKError where isMissingRecordError(error) {
+            return
+        }
         logger.info("🗑️ Deleted friend-only schedule")
     }
 
@@ -175,7 +179,11 @@ actor CloudKitProfileService {
 
     func deleteProfile(recordName: String) async throws {
         let recordID = CKRecord.ID(recordName: recordName)
-        _ = try await publicDB.modifyRecords(saving: [], deleting: [recordID])
+        do {
+            _ = try await publicDB.modifyRecords(saving: [], deleting: [recordID])
+        } catch let error as CKError where isMissingRecordError(error) {
+            return
+        }
         logger.info("🗑️ Deleted CloudKit profile \(recordName)")
     }
 
@@ -214,6 +222,21 @@ actor CloudKitProfileService {
 
     private func friendScheduleRecordName(token: String) -> String {
         "friendSchedule-\(token)"
+    }
+
+    private func isMissingRecordError(_ error: CKError) -> Bool {
+        if error.code == .unknownItem {
+            return true
+        }
+
+        guard error.code == .partialFailure,
+              let partialErrors = error.partialErrorsByItemID?.values else {
+            return false
+        }
+
+        return !partialErrors.isEmpty && partialErrors.allSatisfy { partialError in
+            (partialError as? CKError)?.code == .unknownItem
+        }
     }
 }
 

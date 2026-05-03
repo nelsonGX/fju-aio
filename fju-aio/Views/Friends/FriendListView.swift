@@ -50,6 +50,12 @@ private struct FriendListContent: View {
     @State private var sessionError: String?
     @AppStorage("friendList.shareCredentialQRCode") private var shareCredentialQRCode = false
 
+    private enum ProfileRefreshResult: Sendable {
+        case updated(PublicProfile, id: String)
+        case missing(id: String)
+        case failed
+    }
+
     var body: some View {
         List {
             // MARK: 你的朋友
@@ -143,14 +149,28 @@ private struct FriendListContent: View {
     @MainActor
     private func refreshFriendProfiles() async {
         // Re-fetch CloudKit profiles for all friends to get latest avatars/profile data
-        await withTaskGroup(of: Void.self) { group in
+        await withTaskGroup(of: ProfileRefreshResult.self) { group in
             for friend in friendStore.friends {
                 group.addTask {
-                    if let profile = try? await Self.loadProfileWithFriendSchedule(friend: friend) {
-                        await MainActor.run {
-                            self.friendStore.updateCachedProfile(profile, for: friend.id)
+                    do {
+                        guard let profile = try await Self.loadProfileWithFriendSchedule(friend: friend) else {
+                            return .missing(id: friend.id)
                         }
+                        return .updated(profile, id: friend.id)
+                    } catch {
+                        return .failed
                     }
+                }
+            }
+
+            for await result in group {
+                switch result {
+                case .updated(let profile, let id):
+                    friendStore.updateCachedProfile(profile, for: id)
+                case .missing(let id):
+                    friendStore.removeFriend(id: id)
+                case .failed:
+                    break
                 }
             }
         }
@@ -251,10 +271,19 @@ private struct FriendListContent: View {
             guard let friend = await MainActor.run(body: {
                 friendStore.friends.first { $0.id == recordName }
             }) else { return }
-            if let profile = try? await Self.loadProfileWithFriendSchedule(friend: friend) {
+            do {
+                guard let profile = try await Self.loadProfileWithFriendSchedule(friend: friend) else {
+                    await MainActor.run {
+                        friendStore.removeFriend(id: recordName)
+                        scanError = "此公開資料已不存在，已從好友列表移除。"
+                    }
+                    return
+                }
                 await MainActor.run {
                     friendStore.updateCachedProfile(profile, for: recordName)
                 }
+            } catch {
+                // Keep the existing friend entry on transient CloudKit/network failures.
             }
         }
     }
