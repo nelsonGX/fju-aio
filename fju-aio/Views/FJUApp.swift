@@ -6,6 +6,7 @@ enum AppStartupSettings {
 
 @main
 struct FJUApp: App {
+    @Environment(\.scenePhase) private var scenePhase
     @State private var authManager = AuthenticationManager()
     @State private var isPreloading = false
     @State private var isCompletingOnboarding = false
@@ -94,6 +95,12 @@ struct FJUApp: App {
                       !isCompletingOnboarding,
                       !isPreloading else { return }
                 beginOnboardingCompletionSplash()
+            }
+            .onChange(of: scenePhase) { _, newPhase in
+                guard newPhase == .active,
+                      !authManager.isCheckingAuth,
+                      authManager.isAuthenticated else { return }
+                Task { await authManager.validateProfileIdentityIfNeeded() }
             }
         }
     }
@@ -219,26 +226,41 @@ struct FJUApp: App {
         let scheduleVisibilityRaw = UserDefaults.standard.string(forKey: "myProfile.scheduleVisibility")
         let visibility = ScheduleVisibility(rawValue: scheduleVisibilityRaw ?? "") ?? (shareSchedule ? .public : .friendsOnly)
         let socialLinks = loadOnboardingSocialLinks()
+        let hasLocalDisplayName = UserDefaults.standard.object(forKey: "myProfile.displayName") != nil
+        let hasLocalBio = UserDefaults.standard.object(forKey: "myProfile.bio") != nil
+        let hasLocalSocialLinks = UserDefaults.standard.object(forKey: "myProfile.socialLinks") != nil
 
         onboardingStatusText = "取得個人頭貼..."
         let avatarURLString = try? await TronClassAPIService.shared.getCurrentUserAvatarURL()
 
         onboardingStatusText = "建立課表分享資料..."
         let snapshot = visibility == .off ? nil : await buildOnboardingScheduleSnapshot(session: session)
-        let profile = PublicProfile(
-            cloudKitRecordName: ProfileQRService.stableDeviceToken(),
-            userId: session.userId,
-            empNo: session.empNo,
-            displayName: displayName.isEmpty ? session.userName : displayName,
-            avatarURLString: avatarURLString,
-            bio: bio.isEmpty ? nil : bio,
-            socialLinks: socialLinks,
-            scheduleSnapshot: visibility == .public ? snapshot : nil,
-            lastUpdated: Date()
-        )
-
         onboardingStatusText = "儲存公開個人檔案..."
         do {
+            let publicRecordName = try await CloudKitProfileIdentityService.shared.ensureIdentity(for: session)
+            let existingProfile = try? await CloudKitProfileService.shared.fetchProfile(
+                recordName: ProfileIdentity.publicRecordName(userId: session.userId)
+            )
+            let displayNameToPublish = hasLocalDisplayName && !displayName.isEmpty
+                ? displayName
+                : (existingProfile?.displayName ?? session.userName)
+            let bioToPublish = hasLocalBio
+                ? (bio.isEmpty ? nil : bio)
+                : existingProfile?.bio
+            let socialLinksToPublish = hasLocalSocialLinks
+                ? socialLinks
+                : (existingProfile?.socialLinks ?? socialLinks)
+            let profile = PublicProfile(
+                cloudKitRecordName: publicRecordName,
+                userId: session.userId,
+                empNo: session.empNo,
+                displayName: displayNameToPublish,
+                avatarURLString: avatarURLString ?? existingProfile?.avatarURLString,
+                bio: bioToPublish,
+                socialLinks: socialLinksToPublish,
+                scheduleSnapshot: visibility == .public ? snapshot : nil,
+                lastUpdated: Date()
+            )
             try await CloudKitProfileService.shared.publishProfile(profile)
             let scheduleToken = ProfileQRService.scheduleShareToken()
             if visibility == .friendsOnly, let snapshot {
@@ -252,6 +274,9 @@ struct FJUApp: App {
                 try? await CloudKitProfileService.shared.deleteFriendSchedule(token: scheduleToken)
             }
         } catch {
+            if await authManager.handleProfileIdentityError(error) {
+                return
+            }
             onboardingStatusText = "公開資料稍後可在好友頁重試"
             UserDefaults.standard.set(false, forKey: "myProfile.isPublished")
             try? await Task.sleep(for: .milliseconds(700))

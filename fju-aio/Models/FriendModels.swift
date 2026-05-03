@@ -135,7 +135,8 @@ nonisolated enum SocialPlatform: String, Codable, CaseIterable, Sendable {
 nonisolated struct PublicProfile: Codable, Identifiable, Hashable, Sendable {
     var id: String { cloudKitRecordName }
 
-    /// Stable CloudKit record name — derived from deviceToken on first publish
+    /// CloudKit record name. QR/friend references may use the school-account alias `user-<id>`,
+    /// which resolves to the active owner-created profile record.
     let cloudKitRecordName: String
 
     // School identity (read from SIS session on publish)

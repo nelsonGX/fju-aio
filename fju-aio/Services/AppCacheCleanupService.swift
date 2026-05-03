@@ -29,17 +29,7 @@ enum AppCacheCleanupService {
     }
 
     private static func clearCloudKitData() async {
-        await deleteProfileIfNeeded()
         await deleteFriendScheduleIfNeeded()
-    }
-
-    private static func deleteProfileIfNeeded() async {
-        guard let token = ProfileQRService.existingStableDeviceToken() else { return }
-        do {
-            try await CloudKitProfileService.shared.deleteProfile(recordName: token)
-        } catch {
-            logger.error("Failed to delete CloudKit profile during logout: \(error.localizedDescription, privacy: .public)")
-        }
     }
 
     private static func deleteFriendScheduleIfNeeded() async {

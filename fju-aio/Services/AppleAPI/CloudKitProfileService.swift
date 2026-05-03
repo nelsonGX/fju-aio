@@ -104,6 +104,18 @@ actor CloudKitProfileService {
     // MARK: - Fetch a Friend's Profile
 
     func fetchProfile(recordName: String) async throws -> PublicProfile? {
+        if let userId = ProfileIdentity.userIdFromAliasRecordName(recordName),
+           let activeRecordName = try await CloudKitProfileIdentityService.shared.activePublicRecordName(userId: userId),
+           activeRecordName != recordName {
+            if let activeProfile = try await fetchProfileRecord(recordName: activeRecordName) {
+                return activeProfile
+            }
+        }
+
+        return try await fetchProfileRecord(recordName: recordName)
+    }
+
+    private func fetchProfileRecord(recordName: String) async throws -> PublicProfile? {
         let recordID = CKRecord.ID(recordName: recordName)
         do {
             let record = try await publicDB.record(for: recordID)
@@ -117,12 +129,13 @@ actor CloudKitProfileService {
 
     func fetchProfiles(recordNames: [String]) async throws -> [PublicProfile] {
         guard !recordNames.isEmpty else { return [] }
-        let ids = recordNames.map { CKRecord.ID(recordName: $0) }
-        let results = try await publicDB.records(for: ids)
-        return results.values.compactMap { result in
-            if case .success(let record) = result { return decode(record: record) }
-            return nil
+        var profiles: [PublicProfile] = []
+        for recordName in recordNames {
+            if let profile = try await fetchProfile(recordName: recordName) {
+                profiles.append(profile)
+            }
         }
+        return profiles
     }
 
     // MARK: - Fetch Profiles by School IDs

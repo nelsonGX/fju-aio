@@ -250,7 +250,7 @@ struct CourseDetailSheet: View {
             if isMyProfilePublished,
                let session = try? await authManager.getValidSISSession(),
                studentEmpNos.contains(session.empNo),
-               let ownProfile = try? await CloudKitProfileService.shared.fetchProfile(recordName: ProfileQRService.stableDeviceToken()) {
+               let ownProfile = try? await CloudKitProfileService.shared.fetchProfile(recordName: ProfileIdentity.publicRecordName(for: session)) {
                 profiles.append(ownProfile)
             }
             publicProfilesByEmpNo = profiles.reduce(into: [:]) { result, profile in

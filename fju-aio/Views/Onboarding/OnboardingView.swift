@@ -683,6 +683,7 @@ private struct OnboardingProfilePage: View {
         .task {
             await loadSession()
             loadSocialLinks()
+            await importRemoteProfileIfNeeded()
             await loadAvatar()
         }
         .onChange(of: onContinueTapped) { _, triggered in
@@ -743,9 +744,28 @@ private struct OnboardingProfilePage: View {
         defer { isLoading = false }
         if let session = try? await authManager.getValidSISSession() {
             sisSession = session
-            if displayName.isEmpty {
-                displayName = session.userName
-            }
+        }
+    }
+
+    @MainActor
+    private func importRemoteProfileIfNeeded() async {
+        guard let session = sisSession else { return }
+        let recordName = ProfileIdentity.publicRecordName(for: session)
+        guard let remote = try? await CloudKitProfileService.shared.fetchProfile(recordName: recordName) else { return }
+
+        isPublished = true
+        if UserDefaults.standard.object(forKey: "myProfile.displayName") == nil || displayName.isEmpty {
+            displayName = remote.displayName
+        }
+        if UserDefaults.standard.object(forKey: "myProfile.bio") == nil {
+            bio = remote.bio ?? ""
+        }
+        if UserDefaults.standard.object(forKey: socialLinksKey) == nil {
+            socialLinks = remote.socialLinks
+            saveSocialLinks()
+        }
+        if profileAvatarURL == nil, let remoteAvatarURL = remote.avatarURL {
+            profileAvatarURL = remoteAvatarURL
         }
     }
 

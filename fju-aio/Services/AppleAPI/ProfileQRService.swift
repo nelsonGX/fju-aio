@@ -13,7 +13,7 @@ enum ProfileQRService {
 
     // MARK: - Stable Device Token
     // Generated once per install and stored in Keychain.
-    // Used as the CloudKit record name so it's consistent across sessions.
+    // Used only for device-local identity/diagnostics, not as the public profile ID.
 
     static func stableDeviceToken() -> String {
         if let existing = existingStableDeviceToken() {
@@ -60,7 +60,7 @@ enum ProfileQRService {
         ProfileQRPayload(
             version: 1,
             type: "profile",
-            cloudKitRecordName: stableDeviceToken(),
+            cloudKitRecordName: ProfileIdentity.publicRecordName(userId: userId),
             empNo: empNo,
             displayName: displayName,
             userId: userId,
@@ -97,7 +97,7 @@ enum ProfileQRService {
         MutualQRPayload(
             version: 1,
             type: "mutual",
-            cloudKitRecordName: stableDeviceToken(),
+            cloudKitRecordName: ProfileIdentity.publicRecordName(userId: userId),
             empNo: empNo,
             displayName: displayName,
             userId: userId,
@@ -117,7 +117,7 @@ enum ProfileQRService {
         CombinedQRPayload(
             version: 1,
             type: "combined",
-            cloudKitRecordName: stableDeviceToken(),
+            cloudKitRecordName: ProfileIdentity.publicRecordName(userId: userId),
             empNo: empNo,
             displayName: displayName,
             userId: userId,

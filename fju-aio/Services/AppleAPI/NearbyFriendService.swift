@@ -52,6 +52,7 @@ final class NearbyFriendService: NSObject {
     private var peripheralManager: CBPeripheralManager?
     private var profileCharacteristic: CBMutableCharacteristic?
     private var myProfileData: Data?
+    private var myRecordName: String?
 
     // Central side
     private var centralManager: CBCentralManager?
@@ -84,6 +85,7 @@ final class NearbyFriendService: NSObject {
 
         guard let data = try? JSONEncoder().encode(profile) else { return }
         myProfileData = data
+        myRecordName = profile.cloudKitRecordName
         permissionIssue = nil
 
         // Use a background queue — passing .main can suppress the permission prompt on some iOS versions
@@ -121,6 +123,7 @@ final class NearbyFriendService: NSObject {
         incomingAddRequests = []
         permissionIssue = nil
         myProfileData = nil
+        myRecordName = nil
         profileCharacteristic = nil
         isActive = false
         logger.info("⏹ NearbyFriendService stopped")
@@ -166,7 +169,7 @@ final class NearbyFriendService: NSObject {
     }
 
     private func sendAddRequest(toRecordName recordName: String) {
-        guard recordName != ProfileQRService.stableDeviceToken() else { return }
+        guard recordName != myRecordName else { return }
         pendingAddRequestRecordNames.insert(recordName)
         addRequestAttemptsByRecordName[recordName] = 0
         logger.info("📨 Queued add request for \(recordName, privacy: .public)")
@@ -359,7 +362,7 @@ extension NearbyFriendService: CBPeripheralManagerDelegate {
             for request in requests where request.characteristic.uuid == kAddRequestCharUUID {
                 guard let value = request.value,
                       let payload = try? JSONDecoder().decode(MutualQRPayload.self, from: value),
-                      payload.cloudKitRecordName != ProfileQRService.stableDeviceToken() else {
+                      payload.cloudKitRecordName != self.myRecordName else {
                     peripheral.respond(to: request, withResult: .invalidAttributeValueLength)
                     continue
                 }
@@ -511,8 +514,7 @@ extension NearbyFriendService: CBPeripheralDelegate {
                 return
             }
 
-            let myToken = ProfileQRService.stableDeviceToken()
-            guard payload.cloudKitRecordName != myToken else {
+            guard payload.cloudKitRecordName != self.myRecordName else {
                 self.logger.info("🔄 Skipping own profile advertisement")
                 self.centralManager?.cancelPeripheralConnection(peripheral)
                 return

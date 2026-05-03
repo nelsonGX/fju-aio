@@ -191,31 +191,20 @@ private struct FriendListContent: View {
     }
 
     private func handleScanned(_ qrString: String) {
-        let myToken = ProfileQRService.stableDeviceToken()
         switch ProfileQRService.parse(qrString: qrString) {
         case .profile(let payload):
-            if payload.cloudKitRecordName == myToken {
+            if isOwnProfile(userId: payload.userId, recordName: payload.cloudKitRecordName) {
                 scanError = "這是你自己的 QR Code，無法加自己為好友。"
                 return
             }
-            guard !friendStore.isFriend(recordName: payload.cloudKitRecordName) else {
-                friendStore.updateScheduleShareToken(payload.scheduleShareToken, for: payload.cloudKitRecordName)
-                lastScannedInfo = "\(payload.displayName) 已經在好友列表中。"
-                fetchAndCacheProfile(recordName: payload.cloudKitRecordName)
-                return
-            }
-            friendStore.addFriend(from: payload)
-            lastScannedInfo = "已新增好友：\(payload.displayName)（\(payload.empNo)）"
+            let wasAdded = friendStore.addFriend(from: payload)
+            lastScannedInfo = wasAdded
+                ? "已新增好友：\(payload.displayName)（\(payload.empNo)）"
+                : "已更新 \(payload.displayName) 的好友資料"
             fetchAndCacheProfile(recordName: payload.cloudKitRecordName)
         case .mutual(let payload):
-            if payload.cloudKitRecordName == myToken {
+            if isOwnProfile(userId: payload.userId, recordName: payload.cloudKitRecordName) {
                 scanError = "這是你自己的 QR Code，無法加自己為好友。"
-                return
-            }
-            guard !friendStore.isFriend(recordName: payload.cloudKitRecordName) else {
-                friendStore.updateScheduleShareToken(payload.scheduleShareToken, for: payload.cloudKitRecordName)
-                lastScannedInfo = "\(payload.displayName) 已經在好友列表中。"
-                fetchAndCacheProfile(recordName: payload.cloudKitRecordName)
                 return
             }
             let profilePayload = ProfileQRPayload(
@@ -227,13 +216,15 @@ private struct FriendListContent: View {
                 userId: payload.userId,
                 scheduleShareToken: payload.scheduleShareToken
             )
-            friendStore.addFriend(from: profilePayload)
-            lastScannedInfo = "已新增好友：\(payload.displayName)（\(payload.empNo)）"
+            let wasAdded = friendStore.addFriend(from: profilePayload)
+            lastScannedInfo = wasAdded
+                ? "已新增好友：\(payload.displayName)（\(payload.empNo)）"
+                : "已更新 \(payload.displayName) 的好友資料"
             fetchAndCacheProfile(recordName: payload.cloudKitRecordName)
             startNearbyIfPossible()
             nearbyService.sendAddRequest(to: payload)
         case .combined(let payload):
-            if payload.cloudKitRecordName == myToken {
+            if isOwnProfile(userId: payload.userId, recordName: payload.cloudKitRecordName) {
                 scanError = "這是你自己的 QR Code，無法加自己為好友。"
                 return
             }
@@ -247,11 +238,7 @@ private struct FriendListContent: View {
                 userId: payload.userId,
                 scheduleShareToken: payload.scheduleShareToken
             )
-            if !wasAlreadyFriend {
-                friendStore.addFriend(from: profilePayload)
-            } else {
-                friendStore.updateScheduleShareToken(payload.scheduleShareToken, for: payload.cloudKitRecordName)
-            }
+            friendStore.addFriend(from: profilePayload)
             if let friendId = friendStore.friends.first(where: { $0.id == payload.cloudKitRecordName })?.id {
                 friendStore.saveCredentials(for: friendId, username: payload.username, password: payload.password)
             }
@@ -264,6 +251,11 @@ private struct FriendListContent: View {
         case .unknown:
             scanError = "無法識別此 QR Code。"
         }
+    }
+
+    private func isOwnProfile(userId: Int, recordName: String) -> Bool {
+        guard let sisSession else { return false }
+        return userId == sisSession.userId || recordName == ProfileIdentity.publicRecordName(for: sisSession)
     }
 
     private func fetchAndCacheProfile(recordName: String) {
@@ -289,11 +281,6 @@ private struct FriendListContent: View {
     }
 
     private func addFriend(_ peer: NearbyPeerProfile) {
-        guard !friendStore.isFriend(recordName: peer.id) else {
-            friendStore.updateScheduleShareToken(peer.scheduleShareToken, for: peer.id)
-            fetchAndCacheProfile(recordName: peer.id)
-            return
-        }
         let payload = ProfileQRPayload(
             version: 1,
             type: "profile",

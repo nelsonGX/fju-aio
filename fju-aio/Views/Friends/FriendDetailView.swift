@@ -19,6 +19,7 @@ struct FriendDetailView: View {
     @State private var showCredentialScanner = false
     @State private var credentialScanError: String?
     @State private var showDeleteCredConfirm = false
+    @State private var showFriendOnlyScheduleReAddAlert = false
     @State private var selectedFriendCourse: PublicCourseInfo?
 
     var body: some View {
@@ -181,6 +182,11 @@ struct FriendDetailView: View {
         } message: {
             Text("刪除後將無法在簽到時替 \(currentFriend.displayName) 代為點名，需要重新掃描授權。")
         }
+        .alert("需要重新加好友", isPresented: $showFriendOnlyScheduleReAddAlert) {
+            Button("知道了", role: .cancel) {}
+        } message: {
+            Text("這位朋友的課表目前是只限好友分享，但這裡無法讀取分享資料。可能是對方在新的 iCloud 或裝置上重新建立公開資料，請對方重新顯示好友 QR Code 後再掃描一次。")
+        }
     }
 
     private func loadProfile() async {
@@ -198,14 +204,25 @@ struct FriendDetailView: View {
                 return
             }
 
+            var shouldPromptReAdd = false
             if fresh.scheduleSnapshot == nil,
-               let token = currentFriend.scheduleShareToken,
-               let snapshot = try? await CloudKitProfileService.shared.fetchFriendSchedule(token: token),
-               snapshot.ownerUserId == fresh.userId || snapshot.ownerDisplayName == fresh.displayName {
-                fresh.scheduleSnapshot = snapshot
+               let token = currentFriend.scheduleShareToken {
+                do {
+                    if let snapshot = try await CloudKitProfileService.shared.fetchFriendSchedule(token: token),
+                       snapshot.ownerUserId == fresh.userId || snapshot.ownerDisplayName == fresh.displayName {
+                        fresh.scheduleSnapshot = snapshot
+                    } else {
+                        shouldPromptReAdd = true
+                    }
+                } catch {
+                    shouldPromptReAdd = true
+                }
             }
             profile = fresh
             friendStore.updateCachedProfile(fresh, for: friend.id)
+            if shouldPromptReAdd {
+                showFriendOnlyScheduleReAddAlert = true
+            }
         } catch {
             if profile == nil {
                 loadError = "無法載入資料：\(error.localizedDescription)"
@@ -322,6 +339,7 @@ private struct CredentialScannerSheet: View {
             empNo: "410123456",
             displayName: "王小明",
             cachedProfile: nil,
+            scheduleShareToken: nil,
             addedAt: Date()
         ))
     }

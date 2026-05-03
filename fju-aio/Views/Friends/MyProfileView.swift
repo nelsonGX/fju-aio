@@ -150,6 +150,7 @@ struct MyProfileView: View {
         .task {
             await loadSession()
             loadSocialLinks()
+            await importRemoteProfileIfNeeded()
             await loadProfileAvatar()
         }
         .onDisappear {
@@ -198,11 +199,30 @@ struct MyProfileView: View {
         defer { isLoading = false }
         do {
             sisSession = try await authManager.getValidSISSession()
-            if displayName.isEmpty, let name = sisSession?.userName {
-                displayName = name
-            }
         } catch {
             sisSession = nil
+        }
+    }
+
+    @MainActor
+    private func importRemoteProfileIfNeeded() async {
+        guard let session = sisSession else { return }
+        let recordName = ProfileIdentity.publicRecordName(for: session)
+        guard let remote = try? await CloudKitProfileService.shared.fetchProfile(recordName: recordName) else { return }
+
+        isPublished = true
+        if !hasStoredProfileValue("myProfile.displayName") || displayName.isEmpty {
+            displayName = remote.displayName
+        }
+        if !hasStoredProfileValue("myProfile.bio") {
+            bio = remote.bio ?? ""
+        }
+        if !hasStoredProfileValue(socialLinksKey) {
+            socialLinks = remote.socialLinks
+            saveSocialLinks()
+        }
+        if profileAvatarURL == nil, let remoteAvatarURL = remote.avatarURL {
+            profileAvatarURL = remoteAvatarURL
         }
     }
 
@@ -259,21 +279,34 @@ struct MyProfileView: View {
             let publicSnapshot = visibility == .public ? snapshot : nil
             snapshotLogger.info("📦 publishProfileNow: snapshot is \(snapshot == nil ? "nil" : "present (\(snapshot!.courses.count) courses, semester \(snapshot!.semester))", privacy: .public)")
 
-            let profile = PublicProfile(
-                cloudKitRecordName: ProfileQRService.stableDeviceToken(),
-                userId: session.userId,
-                empNo: session.empNo,
-                displayName: effectiveName,
-                avatarURLString: profileAvatarURL?.absoluteString,
-                bio: bio.isEmpty ? nil : bio,
-                socialLinks: socialLinks,
-                scheduleSnapshot: publicSnapshot,
-                lastUpdated: Date()
-            )
-
-            snapshotLogger.info("☁️ publishProfileNow: sending to CloudKit — displayName=\(effectiveName, privacy: .public), bio=\(profile.bio ?? "nil", privacy: .public), socialLinks=\(self.socialLinks.count, privacy: .public), hasSnapshot=\(profile.scheduleSnapshot != nil, privacy: .public)")
-
             do {
+                let publicRecordName = try await CloudKitProfileIdentityService.shared.ensureIdentity(for: session)
+                let existingProfile = try? await CloudKitProfileService.shared.fetchProfile(
+                    recordName: ProfileIdentity.publicRecordName(userId: session.userId)
+                )
+                let bioToPublish = hasStoredProfileValue("myProfile.bio")
+                    ? (bio.isEmpty ? nil : bio)
+                    : existingProfile?.bio
+                let socialLinksToPublish = hasStoredProfileValue(socialLinksKey)
+                    ? socialLinks
+                    : (existingProfile?.socialLinks ?? socialLinks)
+                let displayNameToPublish = hasStoredProfileValue("myProfile.displayName") && !displayName.isEmpty
+                    ? displayName
+                    : (existingProfile?.displayName ?? effectiveName)
+                let avatarURLStringToPublish = profileAvatarURL?.absoluteString ?? existingProfile?.avatarURLString
+                let profile = PublicProfile(
+                    cloudKitRecordName: publicRecordName,
+                    userId: session.userId,
+                    empNo: session.empNo,
+                    displayName: displayNameToPublish,
+                    avatarURLString: avatarURLStringToPublish,
+                    bio: bioToPublish,
+                    socialLinks: socialLinksToPublish,
+                    scheduleSnapshot: publicSnapshot,
+                    lastUpdated: Date()
+                )
+
+                snapshotLogger.info("☁️ publishProfileNow: sending to CloudKit — displayName=\(displayNameToPublish, privacy: .public), bio=\(profile.bio ?? "nil", privacy: .public), socialLinks=\(socialLinksToPublish.count, privacy: .public), hasSnapshot=\(profile.scheduleSnapshot != nil, privacy: .public)")
                 try await CloudKitProfileService.shared.publishProfile(profile)
                 let scheduleToken = ProfileQRService.scheduleShareToken()
                 if visibility == .friendsOnly, let snapshot {
@@ -290,6 +323,9 @@ struct MyProfileView: View {
                 isPublished = true
             } catch {
                 snapshotLogger.error("❌ publishProfileNow: CloudKit save failed — \(error.localizedDescription, privacy: .public)")
+                if await authManager.handleProfileIdentityError(error) {
+                    return
+                }
                 publishError = "儲存失敗：\(error.localizedDescription)"
                 isPublished = false
             }
@@ -299,10 +335,17 @@ struct MyProfileView: View {
     // MARK: - Disable (delete from CloudKit)
 
     private func disableProfile() async {
-        let token = ProfileQRService.stableDeviceToken()
+        guard let session = sisSession else {
+            isPublished = false
+            return
+        }
         do {
-            try await CloudKitProfileService.shared.deleteProfile(recordName: token)
+            let recordName = try await CloudKitProfileIdentityService.shared.ensureIdentity(for: session)
+            try await CloudKitProfileService.shared.deleteProfile(recordName: recordName)
         } catch {
+            if await authManager.handleProfileIdentityError(error) {
+                return
+            }
             // Silently ignore delete errors (record may not exist)
         }
         try? await CloudKitProfileService.shared.deleteFriendSchedule(token: ProfileQRService.scheduleShareToken())
@@ -362,7 +405,7 @@ struct MyProfileView: View {
     private var previewProfile: PublicProfile? {
         guard let session = sisSession else { return nil }
         return PublicProfile(
-            cloudKitRecordName: ProfileQRService.stableDeviceToken(),
+            cloudKitRecordName: ProfileIdentity.publicRecordName(for: session),
             userId: session.userId,
             empNo: session.empNo,
             displayName: displayName.isEmpty ? session.userName : displayName,
@@ -372,6 +415,10 @@ struct MyProfileView: View {
             scheduleSnapshot: scheduleVisibility == .public ? buildCachedSnapshot(session: session) : nil,
             lastUpdated: Date()
         )
+    }
+
+    private func hasStoredProfileValue(_ key: String) -> Bool {
+        UserDefaults.standard.object(forKey: key) != nil
     }
 
     private var scheduleVisibility: ScheduleVisibility {

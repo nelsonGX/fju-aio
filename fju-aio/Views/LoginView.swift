@@ -65,7 +65,7 @@ struct LoginView: View {
                         .background(Color(.secondarySystemGroupedBackground))
                         .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
 
-                        if let errorMessage {
+                        if let errorMessage = errorMessage ?? authManager.lastSignOutReason {
                             HStack(spacing: 6) {
                                 Image(systemName: "exclamationmark.circle.fill")
                                     .foregroundStyle(.red)
@@ -141,10 +141,28 @@ struct LoginView: View {
             .background(Color(.systemGroupedBackground))
             .navigationBarTitleDisplayMode(.inline)
         }
+        .alert("帳號已登出", isPresented: signOutReasonPresented) {
+            Button("確定", role: .cancel) {
+                authManager.clearLastSignOutReason()
+            }
+        } message: {
+            Text(authManager.lastSignOutReason ?? "")
+        }
     }
 
     private var isButtonDisabled: Bool {
         isLoading || username.isEmpty || password.isEmpty
+    }
+
+    private var signOutReasonPresented: Binding<Bool> {
+        Binding(
+            get: { errorMessage == nil && authManager.lastSignOutReason != nil },
+            set: { isPresented in
+                if !isPresented {
+                    authManager.clearLastSignOutReason()
+                }
+            }
+        )
     }
 
     private func performLogin() async {

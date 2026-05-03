@@ -13,6 +13,7 @@ final class FriendStore {
     static let shared = FriendStore()
 
     private(set) var friends: [FriendRecord] = []
+    private var cloudSyncOwnerUserId: Int?
 
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "FriendStore")
     private let friendsKey = "com.nelsongx.apps.fju-aio.friends"
@@ -21,14 +22,17 @@ final class FriendStore {
 
     // MARK: - Friends
 
-    func addFriend(from payload: ProfileQRPayload) {
+    @discardableResult
+    func addFriend(from payload: ProfileQRPayload) -> Bool {
         if let idx = friends.firstIndex(where: { $0.id == payload.cloudKitRecordName }) {
-            if let token = payload.scheduleShareToken, friends[idx].scheduleShareToken != token {
+            friends[idx].displayName = payload.displayName
+            if let token = payload.scheduleShareToken {
                 friends[idx].scheduleShareToken = token
-                save()
             }
+            save()
+            syncFriendsToCloud()
             logger.info("Friend \(payload.empNo) already in list")
-            return
+            return false
         }
         var record = FriendRecord(
             id: payload.cloudKitRecordName,
@@ -41,7 +45,9 @@ final class FriendStore {
         record.hasStoredCredentials = CredentialStore.shared.hasFriendCredentials(empNo: payload.empNo)
         friends.append(record)
         save()
+        syncFriendsToCloud()
         logger.info("Added friend: \(payload.displayName) (\(payload.empNo))")
+        return true
     }
 
     func isFriend(recordName: String) -> Bool {
@@ -53,6 +59,7 @@ final class FriendStore {
         friends[idx].cachedProfile = profile
         friends[idx].displayName = profile.displayName
         save()
+        syncFriendsToCloud()
         // Refresh widget with updated friend schedule data
         WidgetCenter.shared.reloadTimelines(ofKind: "CourseScheduleWidget")
     }
@@ -62,6 +69,7 @@ final class FriendStore {
               friends[idx].scheduleShareToken != token else { return }
         friends[idx].scheduleShareToken = token
         save()
+        syncFriendsToCloud()
     }
 
     func removeFriend(id: String) {
@@ -70,6 +78,7 @@ final class FriendStore {
         }
         friends.removeAll { $0.id == id }
         save()
+        syncFriendsToCloud()
         WidgetCenter.shared.reloadTimelines(ofKind: "CourseScheduleWidget")
         logger.info("Removed friend \(id)")
     }
@@ -128,7 +137,51 @@ final class FriendStore {
             try? CredentialStore.shared.deleteFriendCredentials(empNo: friend.empNo)
         }
         friends = []
+        cloudSyncOwnerUserId = nil
         UserDefaults.standard.removeObject(forKey: friendsKey)
         logger.info("Cleared all friends and credentials")
+    }
+
+    func importCloudFriends(_ cloudFriends: [FriendRecord]) {
+        guard !cloudFriends.isEmpty else { return }
+        var mergedByID = Dictionary(uniqueKeysWithValues: friends.map { ($0.id, $0) })
+
+        for var cloudFriend in cloudFriends {
+            cloudFriend.hasStoredCredentials = CredentialStore.shared.hasFriendCredentials(empNo: cloudFriend.empNo)
+            if let existing = mergedByID[cloudFriend.id] {
+                var merged = existing
+                if cloudFriend.addedAt < existing.addedAt {
+                    merged = cloudFriend
+                    merged.hasStoredCredentials = existing.hasStoredCredentials || cloudFriend.hasStoredCredentials
+                } else if let cloudProfile = cloudFriend.cachedProfile,
+                          existing.cachedProfile == nil || cloudProfile.lastUpdated > existing.cachedProfile!.lastUpdated {
+                    merged.cachedProfile = cloudProfile
+                    merged.displayName = cloudProfile.displayName
+                }
+                if merged.scheduleShareToken == nil {
+                    merged.scheduleShareToken = cloudFriend.scheduleShareToken
+                }
+                mergedByID[cloudFriend.id] = merged
+            } else {
+                mergedByID[cloudFriend.id] = cloudFriend
+            }
+        }
+
+        friends = mergedByID.values.sorted { $0.addedAt < $1.addedAt }
+        save()
+        WidgetCenter.shared.reloadTimelines(ofKind: "CourseScheduleWidget")
+        logger.info("Imported \(cloudFriends.count) friends from iCloud")
+    }
+
+    func setCloudSyncOwner(userId: Int) {
+        cloudSyncOwnerUserId = userId
+    }
+
+    func syncFriendsToCloud() {
+        guard let userId = cloudSyncOwnerUserId else { return }
+        let snapshot = friends
+        Task {
+            try? await CloudKitProfileIdentityService.shared.saveFriendRecords(snapshot, userId: userId)
+        }
     }
 }
