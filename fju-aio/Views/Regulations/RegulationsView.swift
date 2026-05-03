@@ -1,9 +1,13 @@
 import SwiftUI
 
+private struct RegulationBrowserItem: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
 struct RegulationsView: View {
     @State private var searchText = ""
-    @State private var browserURL: URL?
-    @State private var showBrowser = false
+    @State private var browserItem: RegulationBrowserItem?
     @State private var showMissingURLAlert = false
 
     private var filteredRegulations: [Regulation] {
@@ -37,8 +41,7 @@ struct RegulationsView: View {
                     ForEach(regulations) { regulation in
                         Button {
                             if let url = regulation.url {
-                                browserURL = url
-                                showBrowser = true
+                                browserItem = RegulationBrowserItem(url: url)
                             } else {
                                 showMissingURLAlert = true
                             }
@@ -56,11 +59,9 @@ struct RegulationsView: View {
             placement: .navigationBarDrawer(displayMode: .always),
             prompt: "搜尋選課、獎學金、宿舍、網路..."
         )
-        .sheet(isPresented: $showBrowser) {
-            if let browserURL {
-                InAppBrowserView(url: browserURL)
-                    .ignoresSafeArea()
-            }
+        .sheet(item: $browserItem) { item in
+            InAppBrowserView(url: item.url)
+                .ignoresSafeArea()
         }
         .alert("無法開啟連結", isPresented: $showMissingURLAlert) {
             Button("好", role: .cancel) {}
