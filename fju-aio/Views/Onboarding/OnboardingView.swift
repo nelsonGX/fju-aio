@@ -332,6 +332,10 @@ struct OnboardingView: View {
 // MARK: - Onboarding Preview Video
 
 private struct OnboardingPreviewVideo: View {
+    private static let aspectRatio: CGFloat = 4.0 / 3.0
+    private static let compactMaxPreviewWidth: CGFloat = 420
+    private static let portraitMaxPreviewWidth: CGFloat = 640
+
     let resourceName: String
     let icon: String
     let color: Color
@@ -342,26 +346,38 @@ private struct OnboardingPreviewVideo: View {
     @State private var didConfigurePlayer = false
 
     var body: some View {
-        Group {
-            if let url = Bundle.main.onboardingVideoURL(named: resourceName) {
-                PlayerLayerView(player: player)
-                    .onAppear {
-                        configurePlayerIfNeeded(url: url)
-                        updatePlayback()
-                    }
-                    .onDisappear {
-                        player.pause()
-                    }
-                    .onChange(of: isActive) { _, _ in
-                        updatePlayback()
-                    }
-            } else {
-                mediaFallback
+        GeometryReader { _ in
+            Group {
+                if let url = Bundle.main.onboardingVideoURL(named: resourceName) {
+                    PlayerLayerView(player: player)
+                        .onAppear {
+                            configurePlayerIfNeeded(url: url)
+                            updatePlayback()
+                        }
+                        .onDisappear {
+                            player.pause()
+                        }
+                        .onChange(of: isActive) { _, _ in
+                            updatePlayback()
+                        }
+                } else {
+                    mediaFallback
+                }
             }
+            .aspectRatio(Self.aspectRatio, contentMode: .fit)
+            .frame(maxWidth: maxPreviewWidth)
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+            .frame(maxWidth: .infinity)
+            .frame(maxHeight: .infinity, alignment: .top)
         }
-        .frame(maxWidth: .infinity)
-        .frame(height: 260)
-        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+        .aspectRatio(Self.aspectRatio, contentMode: .fit)
+    }
+
+    private var maxPreviewWidth: CGFloat {
+        let screenSize = UIScreen.main.bounds.size
+        return screenSize.height > screenSize.width
+            ? Self.portraitMaxPreviewWidth
+            : Self.compactMaxPreviewWidth
     }
 
     private var mediaFallback: some View {
