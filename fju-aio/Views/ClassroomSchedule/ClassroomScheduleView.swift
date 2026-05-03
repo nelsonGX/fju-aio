@@ -348,7 +348,7 @@ struct ClassroomScheduleView: View {
         errorMessage = ""
 
         do {
-            let loadedIndex = try await syncStatus.withSync("正在載入教室課表…") {
+            let loadedIndex = try await syncStatus.withSync("正在載入教室課表…（可能會花一點時間）") {
                 try await service.loadIndex(forceRefresh: forceRefresh)
             }
             index = loadedIndex

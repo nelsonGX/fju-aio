@@ -34,8 +34,17 @@ actor CloudKitProfileIdentityService {
     private var privateDB: CKDatabase { container.privateCloudDatabase }
     private var publicDB: CKDatabase { container.publicCloudDatabase }
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "CloudKitIdentity")
+    private let ensuredIdentityCacheTTL: TimeInterval = 10 * 60
+    private var ensuredIdentityCache: [Int: EnsuredIdentityCacheEntry] = [:]
 
     private init() {}
+
+    private struct EnsuredIdentityCacheEntry {
+        let publicRecordName: String
+        let empNo: String
+        let iCloudBindingKey: String
+        let cachedAt: Date
+    }
 
     enum IdentityError: LocalizedError {
         case iCloudUnavailable
@@ -87,6 +96,15 @@ actor CloudKitProfileIdentityService {
         let iCloudBindingKey = bindingKey(for: iCloudUserID)
         let publicRecordName = ProfileIdentity.publicRecordName(userId: session.userId, bindingKey: iCloudBindingKey)
 
+        if !allowTakeover,
+           let cached = ensuredIdentityCache[session.userId],
+           cached.publicRecordName == publicRecordName,
+           cached.empNo == session.empNo,
+           cached.iCloudBindingKey == iCloudBindingKey,
+           Date().timeIntervalSince(cached.cachedAt) < ensuredIdentityCacheTTL {
+            return cached.publicRecordName
+        }
+
         try await ensurePublicBinding(
             session: session,
             publicRecordName: publicRecordName,
@@ -99,6 +117,12 @@ actor CloudKitProfileIdentityService {
             iCloudBindingKey: iCloudBindingKey
         )
 
+        ensuredIdentityCache[session.userId] = EnsuredIdentityCacheEntry(
+            publicRecordName: publicRecordName,
+            empNo: session.empNo,
+            iCloudBindingKey: iCloudBindingKey,
+            cachedAt: Date()
+        )
         return publicRecordName
     }
 

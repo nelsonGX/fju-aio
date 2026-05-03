@@ -14,6 +14,9 @@ final class FriendStore {
 
     private(set) var friends: [FriendRecord] = []
     private var cloudSyncOwnerUserId: Int?
+    private var cloudSyncTask: Task<Void, Never>?
+    private var lastCloudSyncDataByUserId: [Int: Data] = [:]
+    private var pendingCloudSyncDataByUserId: [Int: Data] = [:]
 
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "FriendStore")
     private let friendsKey = "com.nelsongx.apps.fju-aio.friends"
@@ -56,6 +59,8 @@ final class FriendStore {
 
     func updateCachedProfile(_ profile: PublicProfile, for id: String) {
         guard let idx = friends.firstIndex(where: { $0.id == id }) else { return }
+        guard friends[idx].cachedProfile != profile || friends[idx].displayName != profile.displayName else { return }
+
         friends[idx].cachedProfile = profile
         friends[idx].displayName = profile.displayName
         save()
@@ -138,6 +143,10 @@ final class FriendStore {
         }
         friends = []
         cloudSyncOwnerUserId = nil
+        cloudSyncTask?.cancel()
+        cloudSyncTask = nil
+        lastCloudSyncDataByUserId.removeAll()
+        pendingCloudSyncDataByUserId.removeAll()
         UserDefaults.standard.removeObject(forKey: friendsKey)
         logger.info("Cleared all friends and credentials")
     }
@@ -180,8 +189,35 @@ final class FriendStore {
     func syncFriendsToCloud() {
         guard let userId = cloudSyncOwnerUserId else { return }
         let snapshot = friends
-        Task {
-            try? await CloudKitProfileIdentityService.shared.saveFriendRecords(snapshot, userId: userId)
+        guard let data = encodedCloudSnapshot(snapshot),
+              lastCloudSyncDataByUserId[userId] != data,
+              pendingCloudSyncDataByUserId[userId] != data else { return }
+        pendingCloudSyncDataByUserId[userId] = data
+
+        cloudSyncTask?.cancel()
+        cloudSyncTask = Task {
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
+            do {
+                try await CloudKitProfileIdentityService.shared.saveFriendRecords(snapshot, userId: userId)
+                lastCloudSyncDataByUserId[userId] = data
+                if pendingCloudSyncDataByUserId[userId] == data {
+                    pendingCloudSyncDataByUserId[userId] = nil
+                }
+            } catch {
+                if pendingCloudSyncDataByUserId[userId] == data {
+                    pendingCloudSyncDataByUserId[userId] = nil
+                }
+            }
         }
+    }
+
+    private func encodedCloudSnapshot(_ snapshot: [FriendRecord]) -> Data? {
+        let sanitized = snapshot.map { friend in
+            var copy = friend
+            copy.hasStoredCredentials = false
+            return copy
+        }
+        return try? JSONEncoder().encode(sanitized)
     }
 }

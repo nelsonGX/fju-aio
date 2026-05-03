@@ -24,7 +24,7 @@ actor TronClassAPIService {
     }
 
     private struct UserAvatarCacheEntry {
-        let avatarURL: String
+        let avatarURL: String?
         let cachedAt: Date
     }
 
@@ -35,6 +35,7 @@ actor TronClassAPIService {
     private var enrollmentCache: [String: EnrollmentCacheEntry] = [:]
     private var avatarCacheByCourseId: [Int: AvatarCacheEntry] = [:]
     private var currentUserAvatarCache: [Int: UserAvatarCacheEntry] = [:]
+    private var currentUserAvatarFetchTasks: [Int: Task<String?, Error>] = [:]
 
     /// How long enrollment data is considered fresh (10 minutes)
     private let enrollmentCacheTTL: TimeInterval = 600
@@ -47,6 +48,7 @@ actor TronClassAPIService {
         enrollmentCache.removeAll()
         avatarCacheByCourseId.removeAll()
         currentUserAvatarCache.removeAll()
+        currentUserAvatarFetchTasks.removeAll()
     }
     
     // MARK: - Notifications
@@ -197,15 +199,44 @@ actor TronClassAPIService {
             return entry.avatarURL
         }
 
+        if let task = currentUserAvatarFetchTasks[session.userId] {
+            return try await task.value
+        }
+
+        let task = Task<String?, Error> { [session] in
+            try await self.resolveCurrentUserAvatarURL(userId: session.userId)
+        }
+        currentUserAvatarFetchTasks[session.userId] = task
+        defer { currentUserAvatarFetchTasks[session.userId] = nil }
+
+        let avatar = try await task.value
+        currentUserAvatarCache[session.userId] = UserAvatarCacheEntry(
+            avatarURL: avatar,
+            cachedAt: Date()
+        )
+        return avatar
+    }
+
+    private func resolveCurrentUserAvatarURL(userId: Int) async throws -> String? {
+        for entry in avatarCacheByCourseId.values where Date().timeIntervalSince(entry.cachedAt) < avatarCacheTTL {
+            if let avatar = entry.avatars["\(userId)"] {
+                return avatar
+            }
+        }
+
         let courses = try await getMyCourses()
 
         for course in courses {
+            if let entry = avatarCacheByCourseId[course.id],
+               Date().timeIntervalSince(entry.cachedAt) < avatarCacheTTL {
+                if let avatar = entry.avatars["\(userId)"] {
+                    return avatar
+                }
+                continue
+            }
+
             let avatars = try await fetchAvatarsCached(courseId: course.id)
-            if let avatar = avatars["\(session.userId)"] {
-                currentUserAvatarCache[session.userId] = UserAvatarCacheEntry(
-                    avatarURL: avatar,
-                    cachedAt: Date()
-                )
+            if let avatar = avatars["\(userId)"] {
                 return avatar
             }
         }

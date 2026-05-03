@@ -210,7 +210,7 @@ struct OnboardingView: View {
                     Text("以防有人在意...")
                         .font(.system(size: 26, weight: .bold, design: .rounded))
                         .multilineTextAlignment(.center)
-                    Text("首先這不是輔大官方寫的，我們也沒有拿到錢(QQ)。再來這個 App 只是做興趣的，我們不會蒐集您的任何資料。")
+                    Text("首先這不是輔大官方寫的，我們也沒有拿到錢(QQ)。再來這個 App 只是做興趣的，我們不會蒐集您的任何資料。我們只是想做點有用的東西給教授看哈哈啊哈哈")
                         .font(.caption)
                         .padding(16)
                 }
