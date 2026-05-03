@@ -4,13 +4,31 @@
     {
       "layers" : [
         {
-          "image-name" : "Screenshot 2026-04-27 at 8.49.31 AM.png",
-          "name" : "Screenshot 2026-04-27 at 8.49.31 AM",
+          "blend-mode" : "normal",
+          "fill-specializations" : [
+            {
+              "value" : "none"
+            },
+            {
+              "appearance" : "dark",
+              "value" : {
+                "automatic-gradient" : "extended-srgb:0.00000,0.53333,1.00000,1.00000"
+              }
+            },
+            {
+              "appearance" : "tinted",
+              "value" : {
+                "solid" : "display-p3:0.95685,1.00000,0.95898,1.00000"
+              }
+            }
+          ],
+          "image-name" : "fju_aio.png",
+          "name" : "fju_aio",
           "position" : {
-            "scale" : 0.72,
+            "scale" : 0.8,
             "translation-in-points" : [
-              0,
-              0
+              52.234375,
+              -12.325000000000045
             ]
           }
         }

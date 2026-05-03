@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		524AAA052F9EEA5000C3F8F9 /* fju_aio.icon in Resources */ = {isa = PBXBuildFile; fileRef = 524AAA042F9EEA5000C3F8F9 /* fju_aio.icon */; };
+		52A2D8FE2FA7FEF400308435 /* fju_aio.icon in Resources */ = {isa = PBXBuildFile; fileRef = 52A2D8FD2FA7FEF400308435 /* fju_aio.icon */; };
 		52FB830D2F9EDAE500BC5EAE /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 52FB82AA2F9ED94000BC5EAE /* WidgetKit.framework */; };
 		52FB830E2F9EDAE500BC5EAE /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 52FB82AC2F9ED94000BC5EAE /* SwiftUI.framework */; };
 		52FB831B2F9EDAE600BC5EAE /* CourseWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 52FB830C2F9EDAE500BC5EAE /* CourseWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -38,8 +38,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		524AAA042F9EEA5000C3F8F9 /* fju_aio.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = fju_aio.icon; sourceTree = "<group>"; };
 		529879362FA6235500353571 /* CourseWidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CourseWidgetExtension.entitlements; sourceTree = "<group>"; };
+		52A2D8FD2FA7FEF400308435 /* fju_aio.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = fju_aio.icon; sourceTree = "<group>"; };
 		52D5DFF42F693F22002EE05C /* fju-aio.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "fju-aio.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		52FB82AA2F9ED94000BC5EAE /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		52FB82AC2F9ED94000BC5EAE /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
@@ -110,7 +110,7 @@
 				52FB830F2F9EDAE500BC5EAE /* CourseWidget */,
 				52FB82A92F9ED94000BC5EAE /* Frameworks */,
 				52D5DFF52F693F22002EE05C /* Products */,
-				524AAA042F9EEA5000C3F8F9 /* fju_aio.icon */,
+				52A2D8FD2FA7FEF400308435 /* fju_aio.icon */,
 			);
 			sourceTree = "<group>";
 		};
@@ -225,7 +225,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				524AAA052F9EEA5000C3F8F9 /* fju_aio.icon in Resources */,
+				52A2D8FE2FA7FEF400308435 /* fju_aio.icon in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
