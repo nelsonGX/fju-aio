@@ -7,9 +7,10 @@ import UIKit
 // Generates and parses QR codes for profile sharing and group rollcall credential sharing.
 // All data stays on-device and peer-to-peer — nothing transits a server.
 
-enum ProfileQRService {
+nonisolated enum ProfileQRService {
     private static let stableDeviceTokenKey = "com.nelsongx.apps.fju-aio.stableDeviceToken"
     private static let scheduleShareTokenKey = "com.nelsongx.apps.fju-aio.scheduleShareToken"
+    private static let legacyScheduleShareTokensKey = "com.nelsongx.apps.fju-aio.legacyScheduleShareTokens"
 
     // MARK: - Stable Device Token
     // Generated once per install and stored in Keychain.
@@ -45,9 +46,46 @@ enum ProfileQRService {
         try? KeychainManager.shared.retrieveString(for: scheduleShareTokenKey)
     }
 
+    static func storeScheduleShareToken(_ token: String) {
+        guard !token.isEmpty else { return }
+        if let existing = existingScheduleShareToken(), existing != token {
+            storeLegacyScheduleShareToken(existing)
+        } else if existingScheduleShareToken() == token {
+            return
+        }
+        try? KeychainManager.shared.save(token, for: scheduleShareTokenKey)
+    }
+
+    static func scheduleShareTokensForPublishing() -> [String] {
+        var seen = Set<String>()
+        return ([scheduleShareToken()] + legacyScheduleShareTokens()).filter { token in
+            guard !token.isEmpty, !seen.contains(token) else { return false }
+            seen.insert(token)
+            return true
+        }
+    }
+
+    static func legacyScheduleShareTokens() -> [String] {
+        guard let data = UserDefaults.standard.data(forKey: legacyScheduleShareTokensKey),
+              let tokens = try? JSONDecoder().decode([String].self, from: data) else {
+            return []
+        }
+        return tokens
+    }
+
     static func clearStoredTokens() {
         try? KeychainManager.shared.delete(for: stableDeviceTokenKey)
         try? KeychainManager.shared.delete(for: scheduleShareTokenKey)
+        UserDefaults.standard.removeObject(forKey: legacyScheduleShareTokensKey)
+    }
+
+    private static func storeLegacyScheduleShareToken(_ token: String) {
+        var tokens = legacyScheduleShareTokens()
+        guard !tokens.contains(token) else { return }
+        tokens.append(token)
+        if let data = try? JSONEncoder().encode(tokens) {
+            UserDefaults.standard.set(data, forKey: legacyScheduleShareTokensKey)
+        }
     }
 
     // MARK: - Generate Profile QR Payload

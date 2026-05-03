@@ -40,6 +40,7 @@ private struct ProfileRequiredView: View {
 
 private struct FriendListContent: View {
     @Environment(AuthenticationManager.self) private var authManager
+    @Environment(\.scenePhase) private var scenePhase
     @State private var friendStore = FriendStore.shared
     @State private var showAddFriend = false
     @State private var nearbyService = NearbyFriendService.shared
@@ -48,6 +49,8 @@ private struct FriendListContent: View {
     @State private var sisSession: SISSession?
     @State private var isLoadingSession = false
     @State private var sessionError: String?
+    @State private var isRefreshingFriends = false
+    @State private var lastAutomaticRefreshAt = Date.distantPast
     @AppStorage("friendList.shareCredentialQRCode") private var shareCredentialQRCode = false
 
     private enum ProfileRefreshResult: Sendable {
@@ -135,16 +138,47 @@ private struct FriendListContent: View {
             )
         }
         .task {
-            await loadSession()
-            await refreshFriendProfiles()
+            await refreshAll(forceSession: false)
+        }
+        .onAppear {
+            Task { await refreshAllIfNeeded() }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task { await refreshAllIfNeeded() }
         }
         .refreshable { await refreshAll() }
     }
 
     @MainActor
-    private func refreshAll() async {
-        await loadSession(force: true)
+    private func refreshAll(forceSession: Bool = true) async {
+        guard !isRefreshingFriends else { return }
+        isRefreshingFriends = true
+        defer {
+            isRefreshingFriends = false
+            lastAutomaticRefreshAt = Date()
+        }
+
+        await loadSession(force: forceSession)
+        await importCloudFriends()
         await refreshFriendProfiles()
+    }
+
+    @MainActor
+    private func refreshAllIfNeeded() async {
+        guard Date().timeIntervalSince(lastAutomaticRefreshAt) > 5 else { return }
+        await refreshAll(forceSession: false)
+    }
+
+    @MainActor
+    private func importCloudFriends() async {
+        guard let userId = sisSession?.userId else { return }
+        friendStore.setCloudSyncOwner(userId: userId)
+        guard let cloudFriends = try? await CloudKitProfileIdentityService.shared.fetchFriendRecords(userId: userId) else {
+            return
+        }
+        friendStore.importCloudFriends(cloudFriends)
+        friendStore.syncFriendsToCloud()
     }
 
     @MainActor

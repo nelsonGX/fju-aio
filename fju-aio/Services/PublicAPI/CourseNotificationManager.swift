@@ -23,6 +23,9 @@ final class CourseNotificationManager {
         _minutesBefore = saved == 0 ? 15 : saved
         observePushToStartTokens()
         observeActivityUpdates()
+        Task {
+            await registerCurrentPushToStartTokenIfAvailable()
+        }
     }
 
     // MARK: - Persisted Preferences
@@ -115,6 +118,7 @@ final class CourseNotificationManager {
         static let notifyStart   = "courseNotifyStart"
         static let notifyEnd     = "courseNotifyEnd"
         static let minutesBefore = "courseNotificationMinutesBefore"
+        static let lastRegisteredPushToStartToken = "courseNotificationLastRegisteredPushToStartToken"
     }
 
     // MARK: - Called after course load
@@ -145,6 +149,7 @@ final class CourseNotificationManager {
             return
         }
         lastCourseSnapshot = courses
+        await registerCurrentPushToStartTokenIfAvailable()
         await scheduleRemoteCourseActivities(
             for: courses,
             semesterStartDate: overrideSemesterStartDate,
@@ -794,27 +799,43 @@ final class CourseNotificationManager {
     private func observePushToStartTokens() {
         Task {
             for await tokenData in Activity<CourseActivityAttributes>.pushToStartTokenUpdates {
-                let tokenHex = hexString(from: tokenData)
-                let identity = await notificationIdentity()
-                let payload = PushToStartRegistrationPayload(
-                    userId: identity.userId,
-                    deviceId: identity.deviceId,
-                    pushToStartToken: tokenHex,
-                    clientUnixTime: unixSeconds(Date())
-                )
-                if await postJSON(to: "\(serverBaseURL)/push-to-start/register", body: payload) {
-                    print("[CourseNotification] ✅ 已向伺服器註冊 push-to-start token")
-                    if !lastCourseSnapshot.isEmpty {
-                        await scheduleRemoteCourseActivities(
-                            for: lastCourseSnapshot,
-                            semesterStartDate: nil,
-                            semesterEndDate: nil
-                        )
-                    }
-                } else {
-                    print("[CourseNotification] ⚠️ push-to-start token 註冊失敗")
-                }
+                await registerPushToStartToken(tokenData)
             }
+        }
+    }
+
+    private func registerCurrentPushToStartTokenIfAvailable() async {
+        guard #available(iOS 17.2, *),
+              let tokenData = Activity<CourseActivityAttributes>.pushToStartToken else { return }
+        await registerPushToStartToken(tokenData)
+    }
+
+    private func registerPushToStartToken(_ tokenData: Data) async {
+        let tokenHex = hexString(from: tokenData)
+        let identity = await notificationIdentity()
+        let registrationKey = "\(identity.userId):\(identity.deviceId):\(tokenHex)"
+        if UserDefaults.standard.string(forKey: Keys.lastRegisteredPushToStartToken) == registrationKey {
+            return
+        }
+
+        let payload = PushToStartRegistrationPayload(
+            userId: identity.userId,
+            deviceId: identity.deviceId,
+            pushToStartToken: tokenHex,
+            clientUnixTime: unixSeconds(Date())
+        )
+        if await postJSON(to: "\(serverBaseURL)/push-to-start/register", body: payload) {
+            UserDefaults.standard.set(registrationKey, forKey: Keys.lastRegisteredPushToStartToken)
+            print("[CourseNotification] ✅ 已向伺服器註冊 push-to-start token")
+            if !lastCourseSnapshot.isEmpty {
+                await scheduleRemoteCourseActivities(
+                    for: lastCourseSnapshot,
+                    semesterStartDate: nil,
+                    semesterEndDate: nil
+                )
+            }
+        } else {
+            print("[CourseNotification] ⚠️ push-to-start token 註冊失敗")
         }
     }
 

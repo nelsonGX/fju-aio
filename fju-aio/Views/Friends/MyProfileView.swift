@@ -27,6 +27,8 @@ struct MyProfileView: View {
     @State private var saveTask: Task<Void, Never>?
     @State private var hasPendingProfileSave = false
     @State private var isPublishingProfile = false
+    @State private var isApplyingRemoteProfile = false
+    @State private var suppressProfileSaveUntil = Date.distantPast
     @State private var publishError: String?
 
     private let syncStatus = SyncStatusManager.shared
@@ -210,23 +212,43 @@ struct MyProfileView: View {
     @MainActor
     private func importRemoteProfileIfNeeded() async {
         guard let session = sisSession else { return }
+        _ = try? await CloudKitProfileIdentityService.shared.ensureIdentity(for: session)
         let recordName = ProfileIdentity.publicRecordName(for: session)
         guard let remote = try? await CloudKitProfileService.shared.fetchProfile(recordName: recordName) else { return }
 
+        isApplyingRemoteProfile = true
+        suppressProfileSaveUntil = Date().addingTimeInterval(1)
+        defer {
+            suppressProfileSaveUntil = Date().addingTimeInterval(1)
+            isApplyingRemoteProfile = false
+            hasPendingProfileSave = false
+        }
+
         isPublished = true
-        if !hasStoredProfileValue("myProfile.displayName") || displayName.isEmpty {
-            displayName = remote.displayName
-        }
-        if !hasStoredProfileValue("myProfile.bio") {
-            bio = remote.bio ?? ""
-        }
-        if !hasStoredProfileValue(socialLinksKey) {
-            socialLinks = remote.socialLinks
-            saveSocialLinks()
-        }
+        displayName = remote.displayName
+        bio = remote.bio ?? ""
+        socialLinks = remote.socialLinks
+        saveSocialLinks()
+        let remoteVisibility = await remoteScheduleVisibility(remote)
+        scheduleVisibilityRaw = remoteVisibility.rawValue
+        shareSchedule = remoteVisibility == .public
         if profileAvatarURL == nil, let remoteAvatarURL = remote.avatarURL {
             profileAvatarURL = remoteAvatarURL
         }
+    }
+
+    private func remoteScheduleVisibility(_ remote: PublicProfile) async -> ScheduleVisibility {
+        if remote.scheduleSnapshot != nil {
+            return .public
+        }
+
+        for token in ProfileQRService.scheduleShareTokensForPublishing() {
+            if (try? await CloudKitProfileService.shared.fetchFriendSchedule(token: token)) != nil {
+                return .friendsOnly
+            }
+        }
+
+        return .off
     }
 
     private func loadProfileAvatar() async {
@@ -256,6 +278,7 @@ struct MyProfileView: View {
 
     /// Schedule a debounced save 0.8 s after the last change.
     private func scheduleSave() {
+        guard !isApplyingRemoteProfile, Date() >= suppressProfileSaveUntil else { return }
         guard isPublished, sisSession != nil else { return }
         hasPendingProfileSave = true
         saveTask?.cancel()
@@ -299,12 +322,12 @@ struct MyProfileView: View {
 
         let snapshot = visibility == .off ? nil : await buildSnapshot(session: session)
         let publicSnapshot = visibility == .public ? snapshot : nil
-        let scheduleToken = ProfileQRService.scheduleShareToken()
+        let scheduleTokens = ProfileQRService.scheduleShareTokensForPublishing()
         snapshotLogger.info("📦 publishProfileNow: snapshot is \(snapshot == nil ? "nil" : "present (\(snapshot!.courses.count) courses, semester \(snapshot!.semester))", privacy: .public)")
 
         let friendScheduleChanged = await hasFriendScheduleChanges(
             visibility: visibility,
-            token: scheduleToken,
+            tokens: scheduleTokens,
             draftSnapshot: snapshot
         )
         if let existingProfile,
@@ -342,14 +365,18 @@ struct MyProfileView: View {
                 snapshotLogger.info("☁️ publishProfileNow: sending to CloudKit — displayName=\(displayNameToPublish, privacy: .public), bio=\(profile.bio ?? "nil", privacy: .public), socialLinks=\(socialLinksToPublish.count, privacy: .public), hasSnapshot=\(profile.scheduleSnapshot != nil, privacy: .public)")
                 try await CloudKitProfileService.shared.publishProfile(profile)
                 if visibility == .friendsOnly, let snapshot {
-                    try await CloudKitProfileService.shared.publishFriendSchedule(
-                        snapshot,
-                        token: scheduleToken,
-                        ownerRecordName: profile.cloudKitRecordName,
-                        ownerEmpNo: session.empNo
-                    )
+                    for token in scheduleTokens {
+                        try await CloudKitProfileService.shared.publishFriendSchedule(
+                            snapshot,
+                            token: token,
+                            ownerRecordName: profile.cloudKitRecordName,
+                            ownerEmpNo: session.empNo
+                        )
+                    }
                 } else if visibility == .off || visibility == .public {
-                    try? await CloudKitProfileService.shared.deleteFriendSchedule(token: scheduleToken)
+                    for token in scheduleTokens {
+                        try? await CloudKitProfileService.shared.deleteFriendSchedule(token: token)
+                    }
                 }
                 snapshotLogger.info("✅ publishProfileNow: CloudKit save succeeded")
                 isPublished = true
@@ -367,16 +394,26 @@ struct MyProfileView: View {
 
     private func hasFriendScheduleChanges(
         visibility: ScheduleVisibility,
-        token: String,
+        tokens: [String],
         draftSnapshot: FriendScheduleSnapshot?
     ) async -> Bool {
         switch visibility {
         case .friendsOnly:
             guard let draftSnapshot else { return false }
-            let existing = try? await CloudKitProfileService.shared.fetchFriendSchedule(token: token)
-            return hasSnapshotChanges(existing, draftSnapshot)
+            for token in tokens {
+                let existing = try? await CloudKitProfileService.shared.fetchFriendSchedule(token: token)
+                if hasSnapshotChanges(existing, draftSnapshot) {
+                    return true
+                }
+            }
+            return false
         case .off:
-            return (try? await CloudKitProfileService.shared.fetchFriendSchedule(token: token)) != nil
+            for token in tokens {
+                if (try? await CloudKitProfileService.shared.fetchFriendSchedule(token: token)) != nil {
+                    return true
+                }
+            }
+            return false
         case .public:
             return false
         }
@@ -435,7 +472,9 @@ struct MyProfileView: View {
             }
             // Silently ignore delete errors (record may not exist)
         }
-        try? await CloudKitProfileService.shared.deleteFriendSchedule(token: ProfileQRService.scheduleShareToken())
+        for token in ProfileQRService.scheduleShareTokensForPublishing() {
+            try? await CloudKitProfileService.shared.deleteFriendSchedule(token: token)
+        }
         isPublished = false
     }
 

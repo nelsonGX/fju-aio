@@ -255,7 +255,7 @@ nonisolated struct FriendRecord: Codable, Identifiable, Hashable, Sendable {
 // MARK: - Group Rollcall Credential Payload
 // Embedded in a QR code — user explicitly opts in to share LDAP credentials
 
-struct GroupRollcallQRPayload: Codable, Sendable {
+nonisolated struct GroupRollcallQRPayload: Codable, Sendable {
     let version: Int
     let type: String                // "group_rollcall"
     let username: String
@@ -269,7 +269,7 @@ struct GroupRollcallQRPayload: Codable, Sendable {
 // Carries both profile info and LDAP credentials in a single QR code.
 // Scanning this adds the person as a friend AND stores rollcall credentials.
 
-struct CombinedQRPayload: Codable, Sendable {
+nonisolated struct CombinedQRPayload: Codable, Sendable {
     let version: Int
     let type: String                // "combined"
     let cloudKitRecordName: String
@@ -284,7 +284,7 @@ struct CombinedQRPayload: Codable, Sendable {
 
 // MARK: - Profile QR Payload
 
-struct ProfileQRPayload: Codable, Sendable {
+nonisolated struct ProfileQRPayload: Codable, Sendable {
     let version: Int
     let type: String                // "profile"
     let cloudKitRecordName: String
@@ -299,7 +299,7 @@ struct ProfileQRPayload: Codable, Sendable {
 // immediately shows their own MutualQR for A to scan back.
 // Each scan adds the other person as a friend on that device.
 
-struct MutualQRPayload: Codable, Sendable {
+nonisolated struct MutualQRPayload: Codable, Sendable {
     let version: Int
     let type: String                // "mutual"
     let cloudKitRecordName: String
@@ -311,7 +311,7 @@ struct MutualQRPayload: Codable, Sendable {
 
 // MARK: - QR Code Type Discriminator
 
-enum ScannedQRType {
+nonisolated enum ScannedQRType {
     case profile(ProfileQRPayload)
     case groupRollcall(GroupRollcallQRPayload)
     case combined(CombinedQRPayload)

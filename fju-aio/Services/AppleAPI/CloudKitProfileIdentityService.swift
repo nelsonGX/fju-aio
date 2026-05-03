@@ -3,7 +3,7 @@ import CryptoKit
 import Foundation
 import os.log
 
-enum ProfileIdentity {
+nonisolated enum ProfileIdentity {
     static func publicRecordName(userId: Int) -> String {
         "user-\(userId)"
     }
@@ -70,6 +70,7 @@ actor CloudKitProfileIdentityService {
         static let empNo = "empNo"
         static let activePublicRecordName = "activePublicRecordName"
         static let boundICloudUserID = "boundICloudUserID"
+        static let scheduleShareToken = "scheduleShareToken"
         static let lastUpdated = "lastUpdated"
         static let deviceId = "deviceId"
     }
@@ -198,10 +199,20 @@ actor CloudKitProfileIdentityService {
             throw IdentityError.accountTakenOver
         }
 
+        let scheduleShareToken: String
+        if let remoteToken = record[PrivateIdentityField.scheduleShareToken] as? String,
+           !remoteToken.isEmpty {
+            scheduleShareToken = remoteToken
+            ProfileQRService.storeScheduleShareToken(remoteToken)
+        } else {
+            scheduleShareToken = ProfileQRService.scheduleShareToken()
+        }
+
         record[PrivateIdentityField.ownerUserId] = session.userId as CKRecordValue
         record[PrivateIdentityField.empNo] = session.empNo as CKRecordValue
         record[PrivateIdentityField.activePublicRecordName] = publicRecordName as CKRecordValue
         record[PrivateIdentityField.boundICloudUserID] = iCloudBindingKey as CKRecordValue
+        record[PrivateIdentityField.scheduleShareToken] = scheduleShareToken as CKRecordValue
         record[PrivateIdentityField.lastUpdated] = Date() as CKRecordValue
         record[PrivateIdentityField.deviceId] = ProfileQRService.stableDeviceToken() as CKRecordValue
 

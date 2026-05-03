@@ -81,19 +81,7 @@ actor CloudKitProfileService {
         }
 
         logger.info("☁️ Saving CKRecord — type=\(PublicProfile.CKField.recordType, privacy: .public), recordName=\(profile.cloudKitRecordName, privacy: .public)")
-        do {
-            let saveResults = try await publicDB.modifyRecords(saving: [record], deleting: []).saveResults
-            guard let saveResult = saveResults[recordID] else {
-                throw PublishError.missingSaveResult(recordName: profile.cloudKitRecordName)
-            }
-
-            switch saveResult {
-            case .success:
-                break
-            case .failure(let error):
-                throw error
-            }
-        }
+        try await save(record, missingSaveResultName: profile.cloudKitRecordName)
         guard try await fetchProfile(recordName: profile.cloudKitRecordName) != nil else {
             logger.error("❌ Published profile verification failed for \(profile.cloudKitRecordName, privacy: .public)")
             throw PublishError.verificationFailed(recordName: profile.cloudKitRecordName)
@@ -193,7 +181,7 @@ actor CloudKitProfileService {
         record[FriendScheduleField.scheduleSnapshotData] = try JSONEncoder().encode(snapshot) as CKRecordValue
         record[FriendScheduleField.lastUpdated] = snapshot.updatedAt as CKRecordValue
 
-        _ = try await publicDB.modifyRecords(saving: [record], deleting: [])
+        try await save(record, missingSaveResultName: recordID.recordName)
         logger.info("✅ Published friend-only schedule for \(ownerEmpNo, privacy: .private)")
     }
 
@@ -268,6 +256,26 @@ actor CloudKitProfileService {
 
     private func friendScheduleRecordName(token: String) -> String {
         "friendSchedule-\(token)"
+    }
+
+    private func save(_ record: CKRecord, missingSaveResultName: String) async throws {
+        let saveResults = try await publicDB.modifyRecords(
+            saving: [record],
+            deleting: [],
+            savePolicy: .changedKeys,
+            atomically: false
+        ).saveResults
+
+        guard let saveResult = saveResults[record.recordID] else {
+            throw PublishError.missingSaveResult(recordName: missingSaveResultName)
+        }
+
+        switch saveResult {
+        case .success:
+            break
+        case .failure(let error):
+            throw error
+        }
     }
 
     private func intValue(for key: String, in record: CKRecord) -> Int? {

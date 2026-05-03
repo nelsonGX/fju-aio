@@ -262,16 +262,20 @@ struct FJUApp: App {
                 lastUpdated: Date()
             )
             try await CloudKitProfileService.shared.publishProfile(profile)
-            let scheduleToken = ProfileQRService.scheduleShareToken()
+            let scheduleTokens = ProfileQRService.scheduleShareTokensForPublishing()
             if visibility == .friendsOnly, let snapshot {
-                try await CloudKitProfileService.shared.publishFriendSchedule(
-                    snapshot,
-                    token: scheduleToken,
-                    ownerRecordName: profile.cloudKitRecordName,
-                    ownerEmpNo: session.empNo
-                )
+                for token in scheduleTokens {
+                    try await CloudKitProfileService.shared.publishFriendSchedule(
+                        snapshot,
+                        token: token,
+                        ownerRecordName: profile.cloudKitRecordName,
+                        ownerEmpNo: session.empNo
+                    )
+                }
             } else if visibility == .off || visibility == .public {
-                try? await CloudKitProfileService.shared.deleteFriendSchedule(token: scheduleToken)
+                for token in scheduleTokens {
+                    try? await CloudKitProfileService.shared.deleteFriendSchedule(token: token)
+                }
             }
         } catch {
             if await authManager.handleProfileIdentityError(error) {
