@@ -14,6 +14,7 @@ struct CourseScheduleView: View {
     @State private var mapHighlightLocation: String? = nil
     @State private var navigateToCampusMap = false
     @State private var showFriendPicker = false
+    @State private var showShareSheet = false
     @State private var visibleFriendIds: Set<String> = []
     @AppStorage("courseSchedule.showSelfCourses") private var showSelfCourses = true
 
@@ -78,7 +79,18 @@ struct CourseScheduleView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                HStack(spacing: 12) {
+                HStack(spacing: 6) {
+                    // Share button
+                    Button {
+                        showShareSheet = true
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.subheadline)
+                            .padding(4)
+                            .offset(y: -2)
+                    }
+                    .disabled(courses.isEmpty)
+
                     // Friend schedule overlay button
                     if !friendsWithSchedule.isEmpty {
                         Button {
@@ -118,7 +130,7 @@ struct CourseScheduleView: View {
                             }
                         } label: {
                             HStack(spacing: 4) {
-                                Text(semesterDisplayName(selectedSemester))
+                                Text(selectedSemester)
                                     .font(.subheadline.weight(.medium))
                                 Image(systemName: "chevron.down")
                                     .font(.caption2.weight(.semibold))
@@ -153,6 +165,10 @@ struct CourseScheduleView: View {
                 colorForIndex: friendColor
             )
             .presentationDetents([.medium])
+        }
+        .sheet(isPresented: $showShareSheet) {
+            CourseShareSheet(courses: courses, semester: selectedSemester)
+                .presentationDetents([.medium])
         }
         .navigationDestination(isPresented: $navigateToCampusMap) {
             CampusMapView(highlightLocation: mapHighlightLocation)
@@ -973,3 +989,285 @@ private struct FriendSchedulePickerSheet: View {
         }
     }
 }
+// MARK: - Course Share Sheet
+
+private struct CourseShareSheet: View {
+    let courses: [Course]
+    let semester: String
+    @Environment(\.dismiss) private var dismiss
+    @AppStorage("myProfile.scheduleVisibility") private var scheduleVisibilityRaw = ScheduleVisibility.friendsOnly.rawValue
+    @AppStorage("myProfile.isPublished") private var isPublished = false
+    @State private var showingNTUTExport = false
+    @State private var ntutJSON: String = ""
+
+    private var scheduleAlreadyShared: Bool {
+        guard isPublished else { return false }
+        let visibility = ScheduleVisibility(rawValue: scheduleVisibilityRaw) ?? .off
+        return visibility == .friendsOnly || visibility == .public
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    // Share with friend
+                    NavigationLink {
+                        if scheduleAlreadyShared {
+                            VStack(spacing: 20) {
+                                Image(systemName: "checkmark.circle")
+                                    .font(.system(size: 56))
+                                    .foregroundStyle(.tint)
+                                Text("你的朋友本來就可以看到呦！")
+                                    .font(.title3.weight(.semibold))
+                                    .multilineTextAlignment(.center)
+                                NavigationLink(destination: FriendListView()) {
+                                    Label("加點好友", systemImage: "person.badge.plus")
+                                }
+                                .buttonStyle(.borderedProminent)
+                                NavigationLink(destination: MyProfileView()) {
+                                    Text("蛤？可是我不想讓他們看到耶...")
+                                }
+                                .buttonStyle(.bordered)
+                                .tint(.secondary)
+                            }
+                            .padding(.horizontal)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .navigationTitle("分享給朋友")
+                            .navigationBarTitleDisplayMode(.inline)
+                        } else {
+                            VStack(spacing: 16) {
+                                Image(systemName: "person.2.circle")
+                                    .font(.system(size: 56))
+                                    .foregroundStyle(.tint)
+                                Text("前往設定 → 帳號 → 課表分享即可更改設定")
+                                    .font(.body)
+                                    .multilineTextAlignment(.center)
+                                    .foregroundStyle(.secondary)
+                                    .padding(.horizontal)
+                                NavigationLink(destination: MyProfileView()) {
+                                    Label("帶我去那裡", systemImage: "arrow.right.circle")
+                                }
+                                .buttonStyle(.borderedProminent)
+                            }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .navigationTitle("分享給朋友")
+                            .navigationBarTitleDisplayMode(.inline)
+                        }
+                    } label: {
+                        Label("分享給朋友", systemImage: "person.2")
+                    }
+
+                    // Share with others (screenshot hint)
+                    NavigationLink {
+                        VStack(spacing: 16) {
+                            Image(systemName: "camera.viewfinder")
+                                .font(.system(size: 56))
+                                .foregroundStyle(.tint)
+                            Text("直接截圖就可以分享囉，我相信你會截圖對吧！")
+                                .font(.body)
+                                .multilineTextAlignment(.center)
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .navigationTitle("分享給其他人")
+                        .navigationBarTitleDisplayMode(.inline)
+                    } label: {
+                        Label("分享給其他人", systemImage: "square.and.arrow.up")
+                    }
+
+                    // Export to 北科盒子
+                    Button {
+                        ntutJSON = buildNTUTBoxJSON(courses: courses, semester: semester)
+                        showingNTUTExport = true
+                    } label: {
+                        Label("匯出到北科盒子", systemImage: "arrow.up.forward.app")
+                            .foregroundStyle(.primary)
+                    }
+                }
+            }
+            .navigationTitle("分享課表")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("關閉") { dismiss() }
+                }
+            }
+            .sheet(isPresented: $showingNTUTExport) {
+                NTUTBoxExportSheet(json: ntutJSON)
+                    .presentationDetents([.large])
+            }
+        }
+    }
+
+    // MARK: - 北科盒子 JSON Builder
+
+    private func buildNTUTBoxJSON(courses: [Course], semester: String) -> String {
+        // Build the period definitions using FJUPeriod data
+        var periodsArray = "["
+        for (index, times) in FJUPeriod.periodTimes.enumerated() {
+            let periodNumber = index + 1
+            let periodId = FJUPeriod.periodLabel(for: periodNumber)
+            let comma = index < FJUPeriod.periodTimes.count - 1 ? "," : ""
+            periodsArray += "\n        { \"id\": \"\(periodId)\", \"startTime\": \"\(times.start)\", \"endTime\": \"\(times.end)\" }\(comma)"
+        }
+        periodsArray += "\n      ]"
+
+        // Group courses by (name, instructor, location) to merge multi-period same-day slots
+        // and collect schedule per logical course entry
+        struct CourseKey: Hashable {
+            let id: String
+            let name: String
+            let instructor: String
+            let location: String
+        }
+
+        var scheduleMap: [CourseKey: [String: [String]]] = [:]
+        var courseOrder: [CourseKey] = []
+
+        for course in courses {
+            let key = CourseKey(id: course.id, name: course.name, instructor: course.instructor, location: course.location)
+
+            if scheduleMap[key] == nil {
+                scheduleMap[key] = [:]
+                courseOrder.append(key)
+            }
+
+            let dayEnglish = englishDayName(course.dayOfWeek)
+
+            // Expand startPeriod...endPeriod into individual period ids
+            for period in course.startPeriod...course.endPeriod {
+                let pid = FJUPeriod.periodLabel(for: period)
+                scheduleMap[key]?[dayEnglish, default: []].append(pid)
+            }
+        }
+
+        // Build courses JSON array
+        var coursesArray = "["
+        for (index, key) in courseOrder.enumerated() {
+            guard let daySchedule = scheduleMap[key] else { continue }
+
+            // Build schedule object
+            var scheduleObj = "{"
+            let sortedDays = daySchedule.keys.sorted { englishDayOrder($0) < englishDayOrder($1) }
+            for (di, day) in sortedDays.enumerated() {
+                let periods = (daySchedule[day] ?? []).map { "\"\($0)\"" }.joined(separator: ", ")
+                let daySep = di < sortedDays.count - 1 ? ", " : ""
+                scheduleObj += "\"\(day)\": [\(periods)]\(daySep)"
+            }
+            scheduleObj += "}"
+
+            let comma = index < courseOrder.count - 1 ? "," : ""
+            coursesArray += """
+
+        {
+          "courseId": "\(escapeJSON(key.id))",
+          "courseName": "\(escapeJSON(key.name))",
+          "teacher": "\(escapeJSON(key.instructor))",
+          "classroom": "\(escapeJSON(key.location))",
+          "schedule": \(scheduleObj)
+        }\(comma)
+"""
+        }
+        coursesArray += "\n      ]"
+
+        let json = """
+{
+  "version": 1,
+  "school": "輔仁大學",
+  "semester": "\(semester)",
+  "timeConfig": {
+    "name": "輔仁大學",
+    "periods": \(periodsArray)
+  },
+  "courses": \(coursesArray)
+}
+"""
+        return json
+    }
+
+    private func englishDayName(_ chinese: String) -> String {
+        switch chinese {
+        case "一": return "Monday"
+        case "二": return "Tuesday"
+        case "三": return "Wednesday"
+        case "四": return "Thursday"
+        case "五": return "Friday"
+        case "六": return "Saturday"
+        case "日": return "Sunday"
+        default: return chinese
+        }
+    }
+
+    private func englishDayOrder(_ day: String) -> Int {
+        switch day {
+        case "Monday": return 0
+        case "Tuesday": return 1
+        case "Wednesday": return 2
+        case "Thursday": return 3
+        case "Friday": return 4
+        case "Saturday": return 5
+        case "Sunday": return 6
+        default: return 7
+        }
+    }
+
+    private func escapeJSON(_ s: String) -> String {
+        s.replacingOccurrences(of: "\\", with: "\\\\")
+         .replacingOccurrences(of: "\"", with: "\\\"")
+         .replacingOccurrences(of: "\n", with: "\\n")
+         .replacingOccurrences(of: "\r", with: "\\r")
+         .replacingOccurrences(of: "\t", with: "\\t")
+    }
+}
+
+// MARK: - 北科盒子 Export Sheet
+
+private struct NTUTBoxExportSheet: View {
+    let json: String
+    @Environment(\.dismiss) private var dismiss
+    @State private var copied = false
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("我不知道你為什麼要這樣做，但你可以把以下內容貼到匯入匯入課表裡面：")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal)
+
+                    Text(json)
+                        .font(.system(.caption, design: .monospaced))
+                        .padding(12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color(.secondarySystemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .padding(.horizontal)
+                        .textSelection(.enabled)
+                }
+                .padding(.vertical)
+            }
+            .navigationTitle("匯出到北科盒子")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("關閉") { dismiss() }
+                }
+                ToolbarItem(placement: .bottomBar) {
+                    Button {
+                        UIPasteboard.general.string = json
+                        copied = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                            copied = false
+                        }
+                    } label: {
+                        Label(copied ? "已複製！" : "複製 JSON", systemImage: copied ? "checkmark" : "doc.on.doc")
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+        }
+    }
+}
+
