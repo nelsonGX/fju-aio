@@ -92,12 +92,17 @@ actor CloudKitProfileIdentityService {
     }
 
     @discardableResult
-    func ensureIdentity(for session: SISSession, allowTakeover: Bool = false) async throws -> String {
+    func ensureIdentity(
+        for session: SISSession,
+        allowTakeover: Bool = false,
+        forceRefresh: Bool = false
+    ) async throws -> String {
         let iCloudUserID = try await currentICloudUserID()
         let iCloudBindingKey = bindingKey(for: iCloudUserID)
         let publicRecordName = ProfileIdentity.publicRecordName(userId: session.userId, bindingKey: iCloudBindingKey)
 
         if !allowTakeover,
+           !forceRefresh,
            let cached = ensuredIdentityCache[session.userId],
            cached.publicRecordName == publicRecordName,
            cached.empNo == session.empNo,

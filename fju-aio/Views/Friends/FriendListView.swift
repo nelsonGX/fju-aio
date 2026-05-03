@@ -172,11 +172,18 @@ private struct FriendListContent: View {
 
     @MainActor
     private func importCloudFriends() async {
-        guard let userId = sisSession?.userId else { return }
-        friendStore.setCloudSyncOwner(userId: userId)
-        guard let cloudFriends = try? await CloudKitProfileIdentityService.shared.fetchFriendRecords(userId: userId) else {
+        guard let session = sisSession else { return }
+        do {
+            _ = try await CloudKitProfileIdentityService.shared.ensureIdentity(
+                for: session,
+                forceRefresh: true
+            )
+        } catch {
+            _ = await authManager.handleProfileIdentityError(error)
             return
         }
+        friendStore.setCloudSyncOwner(userId: session.userId)
+        guard let cloudFriends = try? await CloudKitProfileIdentityService.shared.fetchFriendRecords(userId: session.userId) else { return }
         friendStore.importCloudFriends(cloudFriends)
         friendStore.syncFriendsToCloud()
     }

@@ -27,7 +27,6 @@ final class AuthenticationManager {
         let tronClassLoggedIn = await tronClassAuthService.isLoggedIn()
         let sisLoggedIn = await sisAuthService.isLoggedIn()
         isAuthenticated = tronClassLoggedIn || sisLoggedIn
-        await validateProfileIdentityIfNeeded()
         isCheckingAuth = false
         logger.info("Initial auth state: \(self.isAuthenticated ? "logged in" : "logged out")")
     }
@@ -114,21 +113,6 @@ final class AuthenticationManager {
     @MainActor
     func clearLastSignOutReason() {
         lastSignOutReason = nil
-    }
-
-    @MainActor
-    func validateProfileIdentityIfNeeded() async {
-        guard isAuthenticated,
-              let sisSession = try? await sisAuthService.getValidSession() else { return }
-
-        do {
-            try await CloudKitProfileIdentityService.shared.ensureIdentity(for: sisSession)
-            await importCloudFriends(userId: sisSession.userId)
-        } catch CloudKitProfileIdentityService.IdentityError.accountTakenOver {
-            await forceLocalSignOut(reason: CloudKitProfileIdentityService.IdentityError.accountTakenOver.localizedDescription)
-        } catch {
-            logger.error("CloudKit identity validation failed: \(error.localizedDescription, privacy: .public)")
-        }
     }
 
     @MainActor

@@ -6,7 +6,6 @@ enum AppStartupSettings {
 
 @main
 struct FJUApp: App {
-    @Environment(\.scenePhase) private var scenePhase
     @State private var authManager = AuthenticationManager()
     @State private var isPreloading = false
     @State private var isCompletingOnboarding = false
@@ -95,12 +94,6 @@ struct FJUApp: App {
                       !isCompletingOnboarding,
                       !isPreloading else { return }
                 beginOnboardingCompletionSplash()
-            }
-            .onChange(of: scenePhase) { _, newPhase in
-                guard newPhase == .active,
-                      !authManager.isCheckingAuth,
-                      authManager.isAuthenticated else { return }
-                Task { await authManager.validateProfileIdentityIfNeeded() }
             }
         }
     }
@@ -237,7 +230,10 @@ struct FJUApp: App {
         let snapshot = visibility == .off ? nil : await buildOnboardingScheduleSnapshot(session: session)
         onboardingStatusText = "儲存公開個人檔案..."
         do {
-            let publicRecordName = try await CloudKitProfileIdentityService.shared.ensureIdentity(for: session)
+            let publicRecordName = try await CloudKitProfileIdentityService.shared.ensureIdentity(
+                for: session,
+                forceRefresh: true
+            )
             let existingProfile = try? await CloudKitProfileService.shared.fetchProfile(
                 recordName: ProfileIdentity.publicRecordName(userId: session.userId)
             )

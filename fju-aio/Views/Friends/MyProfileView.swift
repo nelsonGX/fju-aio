@@ -212,7 +212,15 @@ struct MyProfileView: View {
     @MainActor
     private func importRemoteProfileIfNeeded() async {
         guard let session = sisSession else { return }
-        _ = try? await CloudKitProfileIdentityService.shared.ensureIdentity(for: session)
+        do {
+            _ = try await CloudKitProfileIdentityService.shared.ensureIdentity(
+                for: session,
+                forceRefresh: true
+            )
+        } catch {
+            _ = await authManager.handleProfileIdentityError(error)
+            return
+        }
         let recordName = ProfileIdentity.publicRecordName(for: session)
         guard let remote = try? await CloudKitProfileService.shared.fetchProfile(recordName: recordName) else { return }
 
@@ -306,6 +314,22 @@ struct MyProfileView: View {
         let visibility = self.scheduleVisibility
         snapshotLogger.info("📤 publishProfileNow: scheduleVisibility=\(visibility.rawValue, privacy: .public), userId=\(session.userId, privacy: .private), empNo=\(session.empNo, privacy: .private)")
 
+        let publicRecordName: String
+        do {
+            publicRecordName = try await CloudKitProfileIdentityService.shared.ensureIdentity(
+                for: session,
+                forceRefresh: true
+            )
+        } catch {
+            snapshotLogger.error("❌ publishProfileNow: identity validation failed — \(error.localizedDescription, privacy: .public)")
+            if await authManager.handleProfileIdentityError(error) {
+                return
+            }
+            publishError = "儲存失敗：\(error.localizedDescription)"
+            isPublished = false
+            return
+        }
+
         let existingProfile = try? await CloudKitProfileService.shared.fetchProfile(
             recordName: ProfileIdentity.publicRecordName(userId: session.userId)
         )
@@ -349,7 +373,6 @@ struct MyProfileView: View {
 
         await syncStatus.withSync("儲存中...") {
             do {
-                let publicRecordName = try await CloudKitProfileIdentityService.shared.ensureIdentity(for: session)
                 let profile = PublicProfile(
                     cloudKitRecordName: publicRecordName,
                     userId: session.userId,
@@ -464,7 +487,10 @@ struct MyProfileView: View {
             return
         }
         do {
-            let recordName = try await CloudKitProfileIdentityService.shared.ensureIdentity(for: session)
+            let recordName = try await CloudKitProfileIdentityService.shared.ensureIdentity(
+                for: session,
+                forceRefresh: true
+            )
             try await CloudKitProfileService.shared.deleteProfile(recordName: recordName)
         } catch {
             if await authManager.handleProfileIdentityError(error) {
