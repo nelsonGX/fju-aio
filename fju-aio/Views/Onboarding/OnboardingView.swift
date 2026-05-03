@@ -462,6 +462,12 @@ private struct OnboardingProfilePage: View {
     @State private var showAddLink = false
     @State private var showDisableConfirm = false
     @State private var showAvatarMessage = false
+    @FocusState private var focusedField: ProfileField?
+
+    private enum ProfileField: Hashable {
+        case bio
+        case socialLink(String)
+    }
 
     var body: some View {
         ScrollView {
@@ -577,6 +583,7 @@ private struct OnboardingProfilePage: View {
                         VStack(spacing: 0) {
                             TextField("讓朋友認識你（選填）", text: $bio, axis: .vertical)
                                 .lineLimit(3, reservesSpace: true)
+                                .focused($focusedField, equals: .bio)
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 12)
                         }
@@ -610,9 +617,13 @@ private struct OnboardingProfilePage: View {
                                         .font(.body)
                                         .autocorrectionDisabled()
                                         .textInputAutocapitalization(.never)
+                                        .focused($focusedField, equals: .socialLink(socialLinks[i].id))
                                     }
                                     Spacer()
                                     Button {
+                                        if focusedField == .socialLink(socialLinks[i].id) {
+                                            focusedField = nil
+                                        }
                                         socialLinks.remove(at: i)
                                         saveSocialLinks()
                                     } label: {
@@ -660,6 +671,14 @@ private struct OnboardingProfilePage: View {
             }
         }
         .scrollDismissesKeyboard(.interactively)
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("完成") {
+                    focusedField = nil
+                }
+            }
+        }
         .task {
             await loadSession()
             loadSocialLinks()
@@ -667,6 +686,7 @@ private struct OnboardingProfilePage: View {
         }
         .onChange(of: onContinueTapped) { _, triggered in
             guard triggered else { return }
+            focusedField = nil
             Task {
                 await saveAndAdvance()
             }
@@ -807,6 +827,7 @@ private struct AddSocialLinkSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var selectedPlatform: SocialPlatform = .instagram
     @State private var handle = ""
+    @FocusState private var isHandleFocused: Bool
 
     var body: some View {
         NavigationStack {
@@ -830,6 +851,7 @@ private struct AddSocialLinkSheet: View {
                         TextField(selectedPlatform.placeholder, text: $handle)
                             .autocorrectionDisabled()
                             .textInputAutocapitalization(.never)
+                            .focused($isHandleFocused)
                     }
                 }
                 if !handle.trimmingCharacters(in: .whitespaces).isEmpty,
@@ -853,6 +875,12 @@ private struct AddSocialLinkSheet: View {
                         dismiss()
                     }
                     .disabled(handle.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("完成") {
+                        isHandleFocused = false
+                    }
                 }
             }
         }

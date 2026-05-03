@@ -100,6 +100,27 @@ struct LoginView: View {
                         .buttonStyle(.plain)
                         .disabled(isButtonDisabled)
                         .animation(.easeInOut(duration: 0.15), value: isButtonDisabled)
+                        
+                        Link(destination: URL(string: "https://whoami.fju.edu.tw/info_ac.php")!) {
+                            HStack(spacing: 4) {
+                                Text("輔大新人還沒有帳號？")
+                                    .foregroundStyle(.secondary)
+                                Text("跟學校拿個帳號")
+                                    .fontWeight(.semibold)
+                                Image(systemName: "arrow.up.right")
+                                    .font(.caption.weight(.semibold))
+                            }
+                            .font(.footnote)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 4)
+                        }
+
+                        Text("不是輔大的但想進去看看？用帳密 \"demo\" 登入")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 4)
+                        .tint(AppTheme.accent)
                     }
                     .padding(.horizontal, 24)
                 }
