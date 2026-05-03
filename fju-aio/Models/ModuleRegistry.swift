@@ -29,6 +29,8 @@ enum ModuleRegistry {
                   color: .cyan, category: .tools, type: .inApp(.assignments)),
         AppModule(id: "studentGuide", name: "學生指南", icon: "book.pages.fill",
                   color: .indigo, category: .tools, type: .inApp(.studentGuide)),
+        AppModule(id: "regulations", name: "重要法規", icon: "doc.text.magnifyingglass",
+                  color: .purple, category: .tools, type: .inApp(.regulations)),
 
         // Web links (academic)
         AppModule(id: "webTronClass", name: "TronClass", icon: "laptopcomputer",
