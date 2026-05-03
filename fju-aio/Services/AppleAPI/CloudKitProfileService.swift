@@ -15,6 +15,20 @@ actor CloudKitProfileService {
 
     private init() {}
 
+    enum PublishError: LocalizedError {
+        case missingSaveResult(recordName: String)
+        case verificationFailed(recordName: String)
+
+        var errorDescription: String? {
+            switch self {
+            case .missingSaveResult(let recordName):
+                return "CloudKit did not return a save result for recordName=\(recordName)"
+            case .verificationFailed(let recordName):
+                return "CloudKit saved the profile but could not read it back immediately. recordName=\(recordName)"
+            }
+        }
+    }
+
     private enum FriendScheduleField {
         static let recordType = "FriendScheduleShare"
         static let ownerRecordName = "ownerRecordName"
@@ -67,7 +81,23 @@ actor CloudKitProfileService {
         }
 
         logger.info("☁️ Saving CKRecord — type=\(PublicProfile.CKField.recordType, privacy: .public), recordName=\(profile.cloudKitRecordName, privacy: .public)")
-        _ = try await publicDB.modifyRecords(saving: [record], deleting: [])
+        do {
+            let saveResults = try await publicDB.modifyRecords(saving: [record], deleting: []).saveResults
+            guard let saveResult = saveResults[recordID] else {
+                throw PublishError.missingSaveResult(recordName: profile.cloudKitRecordName)
+            }
+
+            switch saveResult {
+            case .success:
+                break
+            case .failure(let error):
+                throw error
+            }
+        }
+        guard try await fetchProfile(recordName: profile.cloudKitRecordName) != nil else {
+            logger.error("❌ Published profile verification failed for \(profile.cloudKitRecordName, privacy: .public)")
+            throw PublishError.verificationFailed(recordName: profile.cloudKitRecordName)
+        }
         logger.info("✅ Published profile for \(profile.displayName, privacy: .public)")
     }
 
@@ -191,11 +221,14 @@ actor CloudKitProfileService {
 
     private func decode(record: CKRecord) -> PublicProfile? {
         guard
-            let userId = record[PublicProfile.CKField.userId] as? Int,
+            let userId = intValue(for: PublicProfile.CKField.userId, in: record),
             let empNo = record[PublicProfile.CKField.empNo] as? String,
             let displayName = record[PublicProfile.CKField.displayName] as? String,
             let lastUpdated = record[PublicProfile.CKField.lastUpdated] as? Date
-        else { return nil }
+        else {
+            logger.error("❌ Failed to decode PublicProfile record \(record.recordID.recordName, privacy: .public)")
+            return nil
+        }
 
         var links: [SocialLink] = []
         if let linksData = record[PublicProfile.CKField.socialLinksData] as? Data {
@@ -222,6 +255,20 @@ actor CloudKitProfileService {
 
     private func friendScheduleRecordName(token: String) -> String {
         "friendSchedule-\(token)"
+    }
+
+    private func intValue(for key: String, in record: CKRecord) -> Int? {
+        let value = record[key]
+        if let int = value as? Int {
+            return int
+        }
+        if let int64 = value as? Int64 {
+            return Int(exactly: int64)
+        }
+        if let number = value as? NSNumber {
+            return number.intValue
+        }
+        return nil
     }
 
     private func isMissingRecordError(_ error: CKError) -> Bool {

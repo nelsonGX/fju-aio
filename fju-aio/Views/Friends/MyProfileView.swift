@@ -291,6 +291,7 @@ struct MyProfileView: View {
             } catch {
                 snapshotLogger.error("❌ publishProfileNow: CloudKit save failed — \(error.localizedDescription, privacy: .public)")
                 publishError = "儲存失敗：\(error.localizedDescription)"
+                isPublished = false
             }
         }
     }

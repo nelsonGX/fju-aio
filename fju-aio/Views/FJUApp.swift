@@ -253,6 +253,7 @@ struct FJUApp: App {
             }
         } catch {
             onboardingStatusText = "公開資料稍後可在好友頁重試"
+            UserDefaults.standard.set(false, forKey: "myProfile.isPublished")
             try? await Task.sleep(for: .milliseconds(700))
         }
     }
