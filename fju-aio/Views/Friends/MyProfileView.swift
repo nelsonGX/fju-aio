@@ -6,6 +6,7 @@ import os.log
 struct MyProfileView: View {
     @Environment(AuthenticationManager.self) private var authManager
     @Environment(\.fjuService) private var service
+    @Environment(iCloudAvailabilityService.self) private var iCloudAvailability
 
     @AppStorage("myProfile.displayName") private var displayName = ""
     @AppStorage("myProfile.bio") private var bio = ""
@@ -70,6 +71,38 @@ struct MyProfileView: View {
 
             // MARK: Public Profile Toggle
             Section {
+                // Show a contextual banner based on sync mode
+                switch iCloudAvailability.syncMode {
+                case .quotaExceeded:
+                    Label {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("iCloud 空間不足 · 好友僅存於裝置")
+                                .font(.subheadline.weight(.medium))
+                            Text("公開資料與課表分享仍可正常運作。")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    } icon: {
+                        Image(systemName: "externaldrive.badge.exclamationmark")
+                            .foregroundStyle(.orange)
+                    }
+                case .noAccount, .restricted, .couldNotDetermine:
+                    Label {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("iCloud 同步已停用")
+                                .font(.subheadline.weight(.medium))
+                            Text(iCloudAvailability.syncMode.shortLabel)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    } icon: {
+                        Image(systemName: "icloud.slash")
+                            .foregroundStyle(.orange)
+                    }
+                case .available:
+                    EmptyView()
+                }
+
                 Toggle("啟用公開資料", isOn: Binding(
                     get: { isPublished },
                     set: { newValue in
@@ -81,7 +114,8 @@ struct MyProfileView: View {
                         }
                     }
                 ))
-                .disabled(sisSession == nil)
+                // Disable toggle only when there's NO iCloud account (can't write to public DB either)
+                .disabled(sisSession == nil || iCloudAvailability.isDeviceOnly)
 
                 if isPublished {
                     Text("你的資料已公開，其他人可以在課表中找到你、查看你的連結；你可以跟同學加好友，互相分享課表。關閉後將刪除雲端資料。")
@@ -221,6 +255,8 @@ struct MyProfileView: View {
             _ = await authManager.handleProfileIdentityError(error)
             return
         }
+        // In no-account mode there's nothing in the public DB to import
+        guard iCloudAvailability.isPublicDBAvailable else { return }
         let recordName = ProfileIdentity.publicRecordName(for: session)
         guard let remote = try? await CloudKitProfileService.shared.fetchProfile(recordName: recordName) else { return }
 
@@ -286,6 +322,7 @@ struct MyProfileView: View {
 
     /// Schedule a debounced save 0.8 s after the last change.
     private func scheduleSave() {
+        guard iCloudAvailability.isPublicDBAvailable else { return }
         guard !isApplyingRemoteProfile, Date() >= suppressProfileSaveUntil else { return }
         guard isPublished, sisSession != nil else { return }
         hasPendingProfileSave = true
@@ -300,6 +337,11 @@ struct MyProfileView: View {
     @MainActor
     private func publishProfileNow() async {
         guard let session = sisSession, isPublished else { return }
+        guard iCloudAvailability.isPublicDBAvailable else {
+            snapshotLogger.info("ℹ️ No iCloud account — skipping CloudKit profile publish")
+            hasPendingProfileSave = false
+            return
+        }
         guard hasPendingProfileSave || profileAvatarURL == nil else { return }
         guard !isPublishingProfile else { return }
         isPublishingProfile = true
@@ -483,6 +525,10 @@ struct MyProfileView: View {
 
     private func disableProfile() async {
         guard let session = sisSession else {
+            isPublished = false
+            return
+        }
+        guard iCloudAvailability.isPublicDBAvailable else {
             isPublished = false
             return
         }
@@ -693,5 +739,6 @@ private struct AddSocialLinkSheet: View {
     NavigationStack {
         MyProfileView()
             .environment(AuthenticationManager())
+            .environment(iCloudAvailabilityService.shared)
     }
 }

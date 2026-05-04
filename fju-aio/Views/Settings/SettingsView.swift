@@ -3,6 +3,7 @@ import UIKit
 
 struct SettingsView: View {
     @Environment(AuthenticationManager.self) private var authManager
+    @Environment(iCloudAvailabilityService.self) private var iCloudAvailability
     @Environment(\.scenePhase) private var scenePhase
     @State private var versionTapCount = 0
     @State private var showDebugScreen = false
@@ -27,6 +28,76 @@ struct SettingsView: View {
     
     var body: some View {
         List {
+            switch iCloudAvailability.syncMode {
+            case .available:
+                EmptyView()
+
+            case .quotaExceeded:
+                Section {
+                    HStack(spacing: 12) {
+                        Image(systemName: "externaldrive.badge.exclamationmark")
+                            .font(.title2)
+                            .foregroundStyle(.orange)
+                            .frame(width: 36)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("iCloud 儲存空間不足")
+                                .font(.subheadline.weight(.semibold))
+                            Text("公開資料與課表分享仍可正常運作。好友清單與金鑰改為僅存於此裝置。")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                    Button {
+                        if let url = URL(string: UIApplication.openSettingsURLString) {
+                            UIApplication.shared.open(url)
+                        }
+                    } label: {
+                        Label("前往設定管理 iCloud 儲存空間", systemImage: "arrow.up.right.square")
+                    }
+                    Button {
+                        Task { await iCloudAvailabilityService.shared.reset() }
+                    } label: {
+                        Label("重新檢查 iCloud 狀態", systemImage: "arrow.clockwise")
+                    }
+                } header: {
+                    Text("iCloud")
+                }
+
+            case .noAccount, .restricted, .couldNotDetermine:
+                Section {
+                    HStack(spacing: 12) {
+                        Image(systemName: iCloudAvailability.syncMode.iconName)
+                            .font(.title2)
+                            .foregroundStyle(.orange)
+                            .frame(width: 36)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("iCloud 同步已停用")
+                                .font(.subheadline.weight(.semibold))
+                            Text(iCloudAvailability.syncMode.bannerDescription)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                    Button {
+                        if let url = URL(string: UIApplication.openSettingsURLString) {
+                            UIApplication.shared.open(url)
+                        }
+                    } label: {
+                        Label("前往設定登入 iCloud", systemImage: "arrow.up.right.square")
+                    }
+                    Button {
+                        Task { await iCloudAvailabilityService.shared.reset() }
+                    } label: {
+                        Label("重新檢查 iCloud 狀態", systemImage: "arrow.clockwise")
+                    }
+                } header: {
+                    Text("iCloud")
+                }
+            }
+
+
             Section("帳號") {
                 NavigationLink(destination: MyProfileView()) {
                     HStack {
@@ -224,6 +295,7 @@ struct SettingsView: View {
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
+                Task { await iCloudAvailabilityService.shared.refresh() }
                 checkAutoSyncPermissionRecovery()
                 disableCourseNotificationsIfLiveActivitiesUnavailable()
             }
@@ -469,5 +541,6 @@ private struct SettingsFriendRow: View {
         SettingsView()
             .environment(\.fjuService, FJUService.shared)
             .environment(AuthenticationManager())
+            .environment(iCloudAvailabilityService.shared)
     }
 }

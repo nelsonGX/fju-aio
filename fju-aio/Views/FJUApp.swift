@@ -7,6 +7,7 @@ enum AppStartupSettings {
 @main
 struct FJUApp: App {
     @State private var authManager = AuthenticationManager()
+    @State private var iCloudAvailability = iCloudAvailabilityService.shared
     @State private var isPreloading = false
     @State private var isCompletingOnboarding = false
     @State private var hasSkippedPreload = false
@@ -17,6 +18,7 @@ struct FJUApp: App {
     @State private var onboardingStatusText = "準備完成設定..."
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
     @AppStorage(AppStartupSettings.syncDuringSplashKey) private var syncDuringSplash = true
+    @Environment(\.scenePhase) private var scenePhase
     private let syncStatus = SyncStatusManager.shared
 
     init() {
@@ -65,10 +67,12 @@ struct FJUApp: App {
                             .environment(HomePreferences())
                             .environment(authManager)
                             .environment(syncStatus)
+                            .environment(iCloudAvailability)
                     } else {
                         OnboardingView(onComplete: beginOnboardingCompletionSplash)
                             .environment(authManager)
                             .environment(syncStatus)
+                            .environment(iCloudAvailability)
                     }
                 } else {
                     LoginView()
@@ -94,6 +98,10 @@ struct FJUApp: App {
                       !isCompletingOnboarding,
                       !isPreloading else { return }
                 beginOnboardingCompletionSplash()
+            }
+            .onChange(of: scenePhase) { _, newPhase in
+                guard newPhase == .active else { return }
+                Task { await iCloudAvailabilityService.shared.refresh() }
             }
         }
     }
@@ -210,6 +218,10 @@ struct FJUApp: App {
     private func publishOnboardingProfileIfNeeded() async {
         guard UserDefaults.standard.bool(forKey: "myProfile.isPublished"),
               let session = try? await authManager.getValidSISSession() else { return }
+        guard iCloudAvailability.isPublicDBAvailable else {
+            onboardingStatusText = "未登入 iCloud，跳過雲端同步"
+            return
+        }
 
         onboardingStatusText = "準備公開個人檔案..."
 

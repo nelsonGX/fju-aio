@@ -17,6 +17,7 @@ final class AuthenticationManager {
     
     init() {
         Task {
+            await iCloudAvailabilityService.shared.refresh()
             await checkInitialAuthState()
         }
     }
@@ -55,10 +56,13 @@ final class AuthenticationManager {
             
             let (tronClassSession, sisSession) = try await (tronClassLogin, sisLogin)
 
+            // ensureIdentity handles iCloud-unavailable and quota-exceeded internally,
+            // falling back to a device-local identity. It only throws for accountTakenOver.
             do {
                 try await CloudKitProfileIdentityService.shared.ensureIdentity(for: sisSession, allowTakeover: true)
                 await importCloudFriends(userId: sisSession.userId)
             } catch {
+                // Only accountTakenOver requires sign-out; all other errors are already handled inside ensureIdentity.
                 try? await tronClassAuthService.logout()
                 try? await sisAuthService.logout()
                 try? await estuAuthService.logout()

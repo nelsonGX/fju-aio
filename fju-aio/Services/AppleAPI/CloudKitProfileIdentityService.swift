@@ -97,7 +97,34 @@ actor CloudKitProfileIdentityService {
         allowTakeover: Bool = false,
         forceRefresh: Bool = false
     ) async throws -> String {
-        let iCloudUserID = try await currentICloudUserID()
+        let availability = iCloudAvailabilityService.shared
+
+        // MARK: No-Account path — device-local identity
+        // When there is no iCloud account at all, we cannot use any CloudKit database.
+        // Generate a stable record name anchored to this device via a Keychain-stored key.
+        if availability.isDeviceOnly {
+            return deviceOnlyIdentity(for: session)
+        }
+
+        // MARK: Quota-Exceeded path — real iCloud identity, public DB only
+        // The user IS signed in to iCloud but their private storage is full.
+        // CloudKit PUBLIC database writes don't count against the user's personal quota,
+        // so public profile publishing and binding still work.
+        // We skip the private DB write (ensurePrivateIdentity) and store tokens locally.
+        if availability.syncMode == .quotaExceeded {
+            return try await quotaExceededIdentity(for: session, allowTakeover: allowTakeover, forceRefresh: forceRefresh)
+        }
+
+        // MARK: Full-Available path
+        let iCloudUserID: String
+        do {
+            iCloudUserID = try await currentICloudUserID()
+        } catch {
+            await availability.handleCloudKitError(error)
+            // Mode may have changed — recurse once to apply the correct path
+            return try await ensureIdentity(for: session, allowTakeover: allowTakeover, forceRefresh: forceRefresh)
+        }
+
         let iCloudBindingKey = bindingKey(for: iCloudUserID)
         let publicRecordName = ProfileIdentity.publicRecordName(userId: session.userId, bindingKey: iCloudBindingKey)
 
@@ -111,17 +138,85 @@ actor CloudKitProfileIdentityService {
             return cached.publicRecordName
         }
 
-        try await ensurePublicBinding(
-            session: session,
+        do {
+            try await ensurePublicBinding(
+                session: session,
+                publicRecordName: publicRecordName,
+                iCloudBindingKey: iCloudBindingKey,
+                allowTakeover: allowTakeover
+            )
+            try await ensurePrivateIdentity(
+                session: session,
+                publicRecordName: publicRecordName,
+                iCloudBindingKey: iCloudBindingKey
+            )
+        } catch {
+            await availability.handleCloudKitError(error)
+            if case .accountTakenOver = error as? IdentityError { throw error }
+            // Mode changed (e.g. quota just exceeded) — recurse to apply correct path
+            if availability.syncMode != .available {
+                return try await ensureIdentity(for: session, allowTakeover: allowTakeover, forceRefresh: false)
+            }
+            logger.warning("⚠️ Binding write failed: \(error.localizedDescription, privacy: .public)")
+        }
+
+        ensuredIdentityCache[session.userId] = EnsuredIdentityCacheEntry(
             publicRecordName: publicRecordName,
+            empNo: session.empNo,
             iCloudBindingKey: iCloudBindingKey,
-            allowTakeover: allowTakeover
+            cachedAt: Date()
         )
-        try await ensurePrivateIdentity(
-            session: session,
-            publicRecordName: publicRecordName,
-            iCloudBindingKey: iCloudBindingKey
+        return publicRecordName
+    }
+
+    /// Device-local identity: no iCloud account, Keychain-stored binding key.
+    private func deviceOnlyIdentity(for session: SISSession) -> String {
+        let local = deviceLocalPublicRecordName(for: session.userId)
+        logger.info("ℹ️ No-account identity: \(local, privacy: .private)")
+        ensuredIdentityCache[session.userId] = EnsuredIdentityCacheEntry(
+            publicRecordName: local,
+            empNo: session.empNo,
+            iCloudBindingKey: "device",
+            cachedAt: Date()
         )
+        _ = ProfileQRService.scheduleShareToken()
+        return local
+    }
+
+    /// Quota-exceeded identity: real iCloud binding key, public DB only.
+    private func quotaExceededIdentity(
+        for session: SISSession,
+        allowTakeover: Bool,
+        forceRefresh: Bool
+    ) async throws -> String {
+        let iCloudUserID = try await currentICloudUserID()
+        let iCloudBindingKey = bindingKey(for: iCloudUserID)
+        let publicRecordName = ProfileIdentity.publicRecordName(userId: session.userId, bindingKey: iCloudBindingKey)
+
+        if !forceRefresh,
+           let cached = ensuredIdentityCache[session.userId],
+           cached.publicRecordName == publicRecordName,
+           cached.empNo == session.empNo,
+           Date().timeIntervalSince(cached.cachedAt) < ensuredIdentityCacheTTL {
+            return cached.publicRecordName
+        }
+
+        // Public DB binding still works (unaffected by user's personal storage quota)
+        do {
+            try await ensurePublicBinding(
+                session: session,
+                publicRecordName: publicRecordName,
+                iCloudBindingKey: iCloudBindingKey,
+                allowTakeover: allowTakeover
+            )
+        } catch {
+            if case .accountTakenOver = error as? IdentityError { throw error }
+            logger.warning("⚠️ Quota mode: public binding failed: \(error.localizedDescription, privacy: .public)")
+        }
+
+        // Private DB write is skipped — store schedule token locally instead
+        _ = ProfileQRService.scheduleShareToken()
+        logger.info("ℹ️ Quota mode: private DB write skipped, using computed record name")
 
         ensuredIdentityCache[session.userId] = EnsuredIdentityCacheEntry(
             publicRecordName: publicRecordName,
@@ -161,16 +256,26 @@ actor CloudKitProfileIdentityService {
     }
 
     func fetchFriendRecords(userId: Int) async throws -> [FriendRecord] {
+        let availability = iCloudAvailabilityService.shared
+        // No account: local FriendStore (UserDefaults) is authoritative, return nothing to merge.
+        if availability.isDeviceOnly { return [] }
+        // Quota exceeded: private DB reads usually still work — try and fall back gracefully.
         let recordID = CKRecord.ID(recordName: friendListRecordName(userId: userId))
         do {
             let record = try await privateDB.record(for: recordID)
             return decodeFriendRecords(from: record)
         } catch let error as CKError where error.code == .unknownItem {
             return try await fetchLegacyFriendRecords()
+        } catch let error as CKError where error.code == .quotaExceeded || error.code == .notAuthenticated {
+            await availability.handleCloudKitError(error)
+            return []
         }
     }
 
     func saveFriendRecords(_ friends: [FriendRecord], userId: Int) async throws {
+        // Private DB writes require available personal iCloud storage.
+        // In quota-exceeded or no-account modes, FriendStore (UserDefaults) is authoritative.
+        guard iCloudAvailabilityService.shared.isPrivateDBAvailable else { return }
         let recordID = CKRecord.ID(recordName: friendListRecordName(userId: userId))
         let record = try await privateFriendListRecord(recordID: recordID)
         let sanitized = friends.map { friend in
@@ -409,5 +514,30 @@ actor CloudKitProfileIdentityService {
         return !partialErrors.isEmpty && partialErrors.allSatisfy { partialError in
             (partialError as? CKError)?.code == .unknownItem
         }
+    }
+
+    // MARK: - Device-Local Identity
+
+    /// Returns a stable public record name anchored to this device, using the same
+    /// formula as the iCloud path so QR codes and nearby sharing stay compatible.
+    /// The device binding key is generated once and stored in Keychain.
+    func deviceLocalPublicRecordName(for userId: Int) -> String {
+        let key = deviceLocalBindingKey(for: userId)
+        return ProfileIdentity.publicRecordName(userId: userId, bindingKey: key)
+    }
+
+    /// Generates or retrieves a stable SHA256-derived binding key anchored to this device.
+    /// Stored in Keychain under `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`.
+    private func deviceLocalBindingKey(for userId: Int) -> String {
+        let keychainKey = "deviceIdentity.bindingKey.\(userId)"
+        if let existing = try? KeychainManager.shared.retrieveString(for: keychainKey) {
+            return existing
+        }
+        // First run: generate a random UUID, hash it (same style as iCloud binding key)
+        let raw = "fju-aio-device-identity:\(userId):\(UUID().uuidString)"
+        let digest = SHA256.hash(data: Data(raw.utf8))
+        let key = digest.map { String(format: "%02x", $0) }.joined()
+        try? KeychainManager.shared.save(key, for: keychainKey)
+        return key
     }
 }

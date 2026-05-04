@@ -187,6 +187,7 @@ final class FriendStore {
     }
 
     func syncFriendsToCloud() {
+        guard iCloudAvailabilityService.shared.isPrivateDBAvailable else { return }
         guard let userId = cloudSyncOwnerUserId else { return }
         let snapshot = friends
         guard let data = encodedCloudSnapshot(snapshot),
@@ -205,6 +206,7 @@ final class FriendStore {
                     pendingCloudSyncDataByUserId[userId] = nil
                 }
             } catch {
+                await iCloudAvailabilityService.shared.handleCloudKitError(error)
                 if pendingCloudSyncDataByUserId[userId] == data {
                     pendingCloudSyncDataByUserId[userId] = nil
                 }

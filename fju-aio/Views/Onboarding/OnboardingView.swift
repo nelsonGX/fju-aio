@@ -457,6 +457,7 @@ private extension Bundle {
 private struct OnboardingProfilePage: View {
     @Environment(AuthenticationManager.self) private var authManager
     @Environment(\.fjuService) private var service
+    @Environment(iCloudAvailabilityService.self) private var iCloudAvailability
 
     /// Parent sets this to true → we save → then call onSaved
     @Binding var onContinueTapped: Bool
@@ -528,7 +529,41 @@ private struct OnboardingProfilePage: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 14)
 
-                    Divider().padding(.leading, 16)
+                    // MARK: iCloud status banner
+                    switch iCloudAvailability.syncMode {
+                    case .quotaExceeded:
+                        Divider().padding(.leading, 16)
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("iCloud 空間不足 · 好友僅存於裝置")
+                                    .font(.caption.weight(.medium))
+                                Text("公開資料與課表分享仍可正常運作。")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } icon: {
+                            Image(systemName: "externaldrive.badge.exclamationmark")
+                                .foregroundStyle(.orange)
+                                .font(.caption)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                    case .noAccount, .restricted, .couldNotDetermine:
+                        Divider().padding(.leading, 16)
+                        Label {
+                            Text(iCloudAvailability.syncMode.shortLabel)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } icon: {
+                            Image(systemName: "icloud.slash")
+                                .foregroundStyle(.orange)
+                                .font(.caption)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                    case .available:
+                        EmptyView()
+                    }
 
                     // MARK: Public profile toggle
                     Toggle(isOn: Binding(
@@ -550,7 +585,7 @@ private struct OnboardingProfilePage: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
-                    .disabled(sisSession == nil)
+                    .disabled(sisSession == nil || iCloudAvailability.isDeviceOnly)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
 
@@ -766,6 +801,8 @@ private struct OnboardingProfilePage: View {
     @MainActor
     private func importRemoteProfileIfNeeded() async {
         guard let session = sisSession else { return }
+        // Skip fetch if public DB is unavailable (no iCloud account)
+        guard iCloudAvailability.isPublicDBAvailable else { return }
         let recordName = ProfileIdentity.publicRecordName(for: session)
         guard let remote = try? await CloudKitProfileService.shared.fetchProfile(recordName: recordName) else { return }
 
@@ -962,4 +999,5 @@ private struct PrivacyRow: View {
 #Preview {
     OnboardingView()
         .environment(AuthenticationManager())
+        .environment(iCloudAvailabilityService.shared)
 }

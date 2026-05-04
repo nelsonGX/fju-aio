@@ -9,6 +9,7 @@ struct FriendDetailView: View {
     @State private var isLoading = false
     @State private var loadError: String?
     @State private var friendStore = FriendStore.shared
+    @Environment(iCloudAvailabilityService.self) private var iCloudAvailability
     @AppStorage(ModuleRegistry.checkInFeatureEnabledKey) private var checkInEnabled = false
 
     // live credential status from store
@@ -191,11 +192,15 @@ struct FriendDetailView: View {
     }
 
     private func loadProfile() async {
+        // Show cached data immediately
+        if let cached = friend.cachedProfile { profile = cached }
+
+        // Skip live CloudKit fetch in device-only mode
+        guard !iCloudAvailability.isDeviceOnly else { return }
+
         isLoading = true
         loadError = nil
         defer { isLoading = false }
-
-        if let cached = friend.cachedProfile { profile = cached }
 
         do {
             guard var fresh = try await CloudKitProfileService.shared.fetchProfile(recordName: friend.id) else {
@@ -343,5 +348,6 @@ private struct CredentialScannerSheet: View {
             scheduleShareToken: nil,
             addedAt: Date()
         ))
+        .environment(iCloudAvailabilityService.shared)
     }
 }

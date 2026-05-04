@@ -41,6 +41,7 @@ private struct ProfileRequiredView: View {
 private struct FriendListContent: View {
     @Environment(AuthenticationManager.self) private var authManager
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(iCloudAvailabilityService.self) private var iCloudAvailability
     @State private var friendStore = FriendStore.shared
     @State private var showAddFriend = false
     @State private var nearbyService = NearbyFriendService.shared
@@ -301,6 +302,7 @@ private struct FriendListContent: View {
     }
 
     private func fetchAndCacheProfile(recordName: String) {
+        guard !iCloudAvailability.isDeviceOnly else { return }
         Task {
             guard let friend = await MainActor.run(body: {
                 friendStore.friends.first { $0.id == recordName }
