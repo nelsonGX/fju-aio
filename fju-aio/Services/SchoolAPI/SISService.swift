@@ -168,23 +168,16 @@ actor SISService {
         return totalCredits > 0 ? totalPoints / Double(totalCredits) : 0.0
     }
 
+    // 第三條：百分計算法與點數對照
+    // 甲(A) ≥80 → 4, 乙(B) 70–79 → 3, 丙(C) 60–69 → 2, 丁(D) 50–59 → 1, 戊(E) <50 → 0
     private func gradePoint(for score: Double?) -> Double {
-        guard let score else { return 0.0 }
-        return convertScoreToGradePoint(score)
-    }
-    
-    private func convertScoreToGradePoint(_ score: Double) -> Double {
+        guard let score else { return 0 }
         switch score {
-        case 90...100: return 4.0
-        case 85..<90: return 3.7
-        case 80..<85: return 3.3
-        case 77..<80: return 3.0
-        case 73..<77: return 2.7
-        case 70..<73: return 2.3
-        case 67..<70: return 2.0
-        case 63..<67: return 1.7
-        case 60..<63: return 1.3
-        default: return 0.0
+        case 80...: return 4
+        case 70..<80: return 3
+        case 60..<70: return 2
+        case 50..<60: return 1
+        default: return 0
         }
     }
     
