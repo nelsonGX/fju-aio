@@ -399,7 +399,7 @@ private struct PublicScheduleCourseBlock: View {
                 .fill(
                     LinearGradient(
                         colors: [
-                            color.mix(with: .white, by: 0.25).opacity(0.34),
+                            color.mixed(with: .white, by: 0.25).opacity(0.34),
                             color.opacity(0.2)
                         ],
                         startPoint: .topLeading,

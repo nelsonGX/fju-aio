@@ -93,32 +93,17 @@ struct ContentView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            Tab("首頁", systemImage: "house.fill", value: .home) {
-                NavigationStack(path: $homePath) {
-                    HomeView()
-                        .navigationDestination(for: AppDestination.self) { destination in
-                            destinationView(for: destination)
-                        }
-                        .navigationDestination(for: FriendRecord.self) { FriendDetailView(friend: $0) }
-                }
-            }
+            homeTab
+                .tabItem { Label("首頁", systemImage: "house.fill") }
+                .tag(AppTab.home)
 
-            Tab("全部功能", systemImage: "square.grid.2x2.fill", value: .allFunctions) {
-                NavigationStack(path: $allFunctionsPath) {
-                    AllFunctionsView()
-                        .navigationDestination(for: AppDestination.self) { destination in
-                            destinationView(for: destination)
-                        }
-                        .navigationDestination(for: FriendRecord.self) { FriendDetailView(friend: $0) }
-                }
-            }
+            allFunctionsTab
+                .tabItem { Label("全部功能", systemImage: "square.grid.2x2.fill") }
+                .tag(AppTab.allFunctions)
 
-            Tab("設定", systemImage: "gearshape.fill", value: .settings) {
-                NavigationStack {
-                    SettingsView()
-                        .navigationDestination(for: FriendRecord.self) { FriendDetailView(friend: $0) }
-                }
-            }
+            settingsTab
+                .tabItem { Label("設定", systemImage: "gearshape.fill") }
+                .tag(AppTab.settings)
         }
         .onOpenURL { url in
             handleDeepLink(url)
@@ -141,6 +126,36 @@ struct ContentView: View {
         }
         .animation(.easeInOut(duration: 0.3), value: syncStatus.isSyncing)
         .animation(.easeInOut(duration: 0.3), value: networkMonitor.isConnected)
+    }
+
+    @ViewBuilder
+    private var homeTab: some View {
+        NavigationStack(path: $homePath) {
+            HomeView()
+                .navigationDestination(for: AppDestination.self) { destination in
+                    destinationView(for: destination)
+                }
+                .navigationDestination(for: FriendRecord.self) { FriendDetailView(friend: $0) }
+        }
+    }
+
+    @ViewBuilder
+    private var allFunctionsTab: some View {
+        NavigationStack(path: $allFunctionsPath) {
+            AllFunctionsView()
+                .navigationDestination(for: AppDestination.self) { destination in
+                    destinationView(for: destination)
+                }
+                .navigationDestination(for: FriendRecord.self) { FriendDetailView(friend: $0) }
+        }
+    }
+
+    @ViewBuilder
+    private var settingsTab: some View {
+        NavigationStack {
+            SettingsView()
+                .navigationDestination(for: FriendRecord.self) { FriendDetailView(friend: $0) }
+        }
     }
 
     private func handleDeepLink(_ url: URL) {

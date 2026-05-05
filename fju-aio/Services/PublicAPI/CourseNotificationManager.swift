@@ -797,9 +797,11 @@ final class CourseNotificationManager {
     }
 
     private func observePushToStartTokens() {
-        Task {
-            for await tokenData in Activity<CourseActivityAttributes>.pushToStartTokenUpdates {
-                await registerPushToStartToken(tokenData)
+        if #available(iOS 17.2, *) {
+            Task {
+                for await tokenData in Activity<CourseActivityAttributes>.pushToStartTokenUpdates {
+                    await registerPushToStartToken(tokenData)
+                }
             }
         }
     }

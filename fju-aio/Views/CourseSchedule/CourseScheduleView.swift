@@ -748,7 +748,7 @@ private struct FriendCourseCell: View {
                 .fill(
                     LinearGradient(
                         colors: [
-                            color.mix(with: .white, by: 0.25).opacity(0.32 * backgroundOpacity),
+                            color.mixed(with: .white, by: 0.25).opacity(0.32 * backgroundOpacity),
                             color.opacity(0.22 * backgroundOpacity)
                         ],
                         startPoint: .topLeading,
@@ -767,11 +767,11 @@ private struct FriendCourseCell: View {
                         .font(.system(size: 8, weight: .bold))
                         .foregroundStyle(.white.opacity(contentOpacity))
                         .frame(width: 14, height: 14)
-                        .background(Circle().fill(color.mix(with: .black, by: 0.1).opacity(contentOpacity)))
+                        .background(Circle().fill(color.mixed(with: .black, by: 0.1).opacity(contentOpacity)))
 
                     Text(course.name)
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(color.mix(with: .black, by: 0.2).opacity(contentOpacity))
+                        .foregroundStyle(color.mixed(with: .black, by: 0.2).opacity(contentOpacity))
                         .lineLimit(1)
                 }
 
@@ -779,7 +779,7 @@ private struct FriendCourseCell: View {
                    CGFloat(course.endPeriod - course.startPeriod + 1) * periodHeight - 2 > periodHeight * 0.9 {
                     Text(course.location)
                         .font(.system(size: 8, weight: .medium))
-                        .foregroundStyle(color.mix(with: .black, by: 0.25).opacity(0.9 * contentOpacity))
+                        .foregroundStyle(color.mixed(with: .black, by: 0.25).opacity(0.9 * contentOpacity))
                         .lineLimit(1)
                 }
             }

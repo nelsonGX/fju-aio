@@ -54,9 +54,9 @@ struct CourseCell: View {
                 .fill(
                     LinearGradient(
                         colors: [
-                            baseColor.mix(with: .white, by: 0.15).opacity(backgroundOpacity),
+                            baseColor.mixed(with: .white, by: 0.15).opacity(backgroundOpacity),
                             baseColor.opacity(backgroundOpacity),
-                            baseColor.mix(with: .black, by: 0.12).opacity(backgroundOpacity)
+                            baseColor.mixed(with: .black, by: 0.12).opacity(backgroundOpacity)
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
