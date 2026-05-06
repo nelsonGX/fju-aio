@@ -16,6 +16,9 @@ struct CourseDetailSheet: View {
     @State private var enrollmentsLoading = false
     @State private var publicProfilesByEmpNo: [String: PublicProfile] = [:]
 
+    @State private var myAttendanceRollcalls: [AttendanceRollcall] = []
+    @State private var attendanceLoading = false
+
     // Friend data for badge display
     private var friendStore: FriendStore { FriendStore.shared }
     /// empNos of friends who have published a profile (cloudKit record exists locally)
@@ -54,7 +57,8 @@ struct CourseDetailSheet: View {
                             avatars: avatars,
                             isLoading: enrollmentsLoading,
                             friendEmpNos: friendEmpNos,
-                            publicProfilesByEmpNo: publicProfilesByEmpNo
+                            publicProfilesByEmpNo: publicProfilesByEmpNo,
+                            courseCode: course.code
                         )
                     } label: {
                         EnrollmentPreviewBar(
@@ -74,6 +78,17 @@ struct CourseDetailSheet: View {
                             FriendCourseOccurrenceRow(occurrence: occurrence)
                         }
                     }
+                }
+
+                // My attendance
+                Section {
+                    NavigationLink {
+                        MyAttendanceDetailView(rollcalls: myAttendanceRollcalls, courseName: course.name)
+                    } label: {
+                        AttendanceSummaryRow(rollcalls: myAttendanceRollcalls, isLoading: attendanceLoading)
+                    }
+                } header: {
+                    Text("我的出缺席")
                 }
 
                 // Course info
@@ -188,6 +203,7 @@ struct CourseDetailSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .task {
                 await loadEnrollments()
+                await loadMyAttendance()
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -221,6 +237,17 @@ struct CourseDetailSheet: View {
             // Silently ignore — preview bar shows empty state
         }
         enrollmentsLoading = false
+    }
+
+    @MainActor
+    private func loadMyAttendance() async {
+        attendanceLoading = true
+        do {
+            myAttendanceRollcalls = try await TronClassAPIService.shared.getMyAttendanceRollcalls(courseCode: course.code)
+        } catch {
+            // Silently ignore — row shows empty state
+        }
+        attendanceLoading = false
     }
 
     @MainActor
@@ -403,6 +430,7 @@ struct EnrollmentListView: View {
     let isLoading: Bool
     var friendEmpNos: Set<String> = []
     var publicProfilesByEmpNo: [String: PublicProfile] = [:]
+    var courseCode: String = ""
 
     @State private var searchText = ""
     @State private var selectedMember: Enrollment? = nil
@@ -466,7 +494,8 @@ struct EnrollmentListView: View {
             EnrollmentMemberDetailView(
                 enrollment: member,
                 avatarURL: avatars["\(member.user.id)"] ?? publicProfilesByEmpNo[member.user.user_no]?.avatarURLString,
-                publicProfile: publicProfilesByEmpNo[member.user.user_no]
+                publicProfile: publicProfilesByEmpNo[member.user.user_no],
+                courseCode: courseCode
             )
         }
     }
@@ -545,9 +574,12 @@ struct EnrollmentMemberDetailView: View {
     let enrollment: Enrollment
     let avatarURL: String?
     let publicProfile: PublicProfile?
+    var courseCode: String = ""
 
     @Environment(\.dismiss) private var dismiss
     @State private var showAvatarMessage = false
+    @State private var attendanceRollcalls: [AttendanceRollcall] = []
+    @State private var attendanceLoading = false
 
     var body: some View {
         NavigationStack {
@@ -627,10 +659,31 @@ struct EnrollmentMemberDetailView: View {
                         LabeledContent("重修", value: "是")
                     }
                 }
+
+                // Attendance — only for students when courseCode is known
+                if enrollment.primaryRole == .student, !courseCode.isEmpty {
+                    Section {
+                        NavigationLink {
+                            StudentAttendanceView(enrollment: enrollment, courseCode: courseCode)
+                        } label: {
+                            AttendanceSummaryRow(rollcalls: attendanceRollcalls, isLoading: attendanceLoading)
+                        }
+                    } header: {
+                        Text("出缺席")
+                    }
+                }
             }
             .listStyle(.insetGrouped)
             .navigationTitle("成員資訊")
             .navigationBarTitleDisplayMode(.inline)
+            .task {
+                guard enrollment.primaryRole == .student, !courseCode.isEmpty else { return }
+                attendanceLoading = true
+                attendanceRollcalls = (try? await TronClassAPIService.shared.getStudentAttendanceRollcalls(
+                    courseCode: courseCode, userId: enrollment.user.id
+                )) ?? []
+                attendanceLoading = false
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("完成") { dismiss() }
@@ -829,6 +882,345 @@ private struct FilledButtonStyle: ButtonStyle {
             .foregroundStyle(.white)
             .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 12))
             .opacity(configuration.isPressed ? 0.7 : 1)
+    }
+}
+
+// MARK: - Attendance Summary Row
+
+private struct AttendanceSummaryRow: View {
+    let rollcalls: [AttendanceRollcall]
+    let isLoading: Bool
+
+    private var total: Int { rollcalls.filter { $0.scored }.count }
+    private var present: Int { rollcalls.filter { $0.scored && $0.attendanceStatus == .present }.count }
+    private var absent: Int { rollcalls.filter { $0.scored && $0.attendanceStatus == .absent }.count }
+    private var rate: Double { total > 0 ? Double(present) / Double(total) : 0 }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            if isLoading {
+                ProgressView().frame(width: 44, height: 32)
+                Text("載入中...").font(.subheadline).foregroundStyle(.secondary)
+            } else if rollcalls.isEmpty {
+                Image(systemName: "checkmark.circle").foregroundStyle(.secondary).frame(width: 32, height: 32)
+                Text("查看出缺席紀錄").font(.subheadline).foregroundStyle(.secondary)
+            } else {
+                ZStack {
+                    Circle()
+                        .stroke(Color.secondary.opacity(0.2), lineWidth: 4)
+                        .frame(width: 36, height: 36)
+                    Circle()
+                        .trim(from: 0, to: rate)
+                        .stroke(rate >= 0.8 ? Color.green : rate >= 0.6 ? Color.orange : Color.red,
+                                style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                        .frame(width: 36, height: 36)
+                        .rotationEffect(.degrees(-90))
+                }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("\(Int(rate * 100))% 出席率")
+                        .font(.subheadline.weight(.medium))
+                    Text("出席 \(present) / 計分 \(total) 次")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+// MARK: - My Attendance Detail View
+
+struct MyAttendanceDetailView: View {
+    let rollcalls: [AttendanceRollcall]
+    let courseName: String
+
+    private var sorted: [AttendanceRollcall] {
+        rollcalls.sorted { ($0.rollcallDate ?? .distantPast) > ($1.rollcallDate ?? .distantPast) }
+    }
+    private var total: Int { rollcalls.filter { $0.scored }.count }
+    private var present: Int { rollcalls.filter { $0.scored && $0.attendanceStatus == .present }.count }
+    private var absent: Int { rollcalls.filter { $0.scored && $0.attendanceStatus == .absent }.count }
+    private var rate: Double { total > 0 ? Double(present) / Double(total) : 0 }
+
+    var body: some View {
+        List {
+            Section {
+                HStack {
+                    Spacer()
+                    VStack(spacing: 8) {
+                        ZStack {
+                            Circle()
+                                .stroke(Color.secondary.opacity(0.15), lineWidth: 8)
+                                .frame(width: 80, height: 80)
+                            Circle()
+                                .trim(from: 0, to: rate)
+                                .stroke(rate >= 0.8 ? Color.green : rate >= 0.6 ? Color.orange : Color.red,
+                                        style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                                .frame(width: 80, height: 80)
+                                .rotationEffect(.degrees(-90))
+                            Text("\(Int(rate * 100))%")
+                                .font(.title3.weight(.bold))
+                        }
+                        Text("出席率")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .padding(.vertical, 8)
+            }
+
+            Section {
+                HStack {
+                    attendanceStat(label: "出席", count: present, color: .green)
+                    Spacer()
+                    attendanceStat(label: "缺席", count: absent, color: .red)
+                    Spacer()
+                    attendanceStat(label: "計分次數", count: total, color: .secondary)
+                }
+                .padding(.vertical, 4)
+            }
+
+            if sorted.isEmpty {
+                Section {
+                    Text("無點名紀錄")
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Section("點名紀錄") {
+                    ForEach(sorted) { rollcall in
+                        AttendanceRollcallRow(rollcall: rollcall)
+                    }
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .navigationTitle("我的出缺席")
+        .navigationBarTitleDisplayMode(.large)
+    }
+
+    private func attendanceStat(label: String, count: Int, color: Color) -> some View {
+        VStack(spacing: 4) {
+            Text("\(count)")
+                .font(.title2.weight(.bold))
+                .foregroundStyle(color)
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+// MARK: - Attendance Rollcall Row
+
+struct AttendanceRollcallRow: View {
+    let rollcall: AttendanceRollcall
+    /// Pass a different status to override display (used to mask leave details for other students).
+    var overrideStatus: AttendanceRecord.AttendanceStatus? = nil
+
+    private var displayStatus: AttendanceRecord.AttendanceStatus {
+        overrideStatus ?? rollcall.attendanceStatus
+    }
+
+    private var statusColor: Color {
+        switch displayStatus {
+        case .present: return .green
+        case .absent: return .red
+        case .late: return .orange
+        case .excused: return .blue
+        case .publicLeave: return .purple
+        case .leave: return .teal
+        case .other: return .secondary
+        }
+    }
+
+    // For .leave, show the reason from student_status_detail (e.g. "病假") if available and not overridden
+    private var statusLabel: String {
+        if displayStatus == .leave, overrideStatus == nil, let reason = rollcall.leaveReason {
+            return reason
+        }
+        switch displayStatus {
+        case .present: return "出席"
+        case .absent: return "缺席"
+        case .late: return "遲到"
+        case .excused: return "請假"
+        case .publicLeave: return "公假"
+        case .leave: return "假"
+        case .other: return "其他"
+        }
+    }
+
+    private var sourceIcon: String {
+        switch rollcall.source {
+        case "qr": return "qrcode"
+        case "radar": return "antenna.radiowaves.left.and.right"
+        case "number": return "number"
+        default: return "checkmark.circle"
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            RoundedRectangle(cornerRadius: 4)
+                .fill(statusColor)
+                .frame(width: 4)
+                .padding(.vertical, 4)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(rollcall.title)
+                    .font(.subheadline)
+                if let date = rollcall.rollcallDate {
+                    Text(date.formatted(date: .abbreviated, time: .shortened))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Spacer()
+
+            HStack(spacing: 6) {
+                if !rollcall.scored {
+                    Text("不計分")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                Image(systemName: sourceIcon)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                Text(statusLabel)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(statusColor)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+// MARK: - Student Attendance View (for viewing another student's record)
+
+struct StudentAttendanceView: View {
+    let enrollment: Enrollment
+    let courseCode: String
+
+    @AppStorage("attendance.hideLeaveDetails") private var hideLeaveDetails = true
+
+    @State private var rollcalls: [AttendanceRollcall] = []
+    @State private var isLoading = true
+    @State private var error: String?
+
+    /// Rollcalls filtered and masked according to the privacy toggle.
+    /// When on: exclude source="middle_db" rows; show any leave status as .other.
+    private var visibleRollcalls: [AttendanceRollcall] {
+        let filtered = hideLeaveDetails ? rollcalls.filter { $0.source != "middle_db" } : rollcalls
+        return filtered.sorted { ($0.rollcallDate ?? .distantPast) > ($1.rollcallDate ?? .distantPast) }
+    }
+
+    private func effectiveStatus(for rollcall: AttendanceRollcall) -> AttendanceRecord.AttendanceStatus {
+        if hideLeaveDetails && rollcall.attendanceStatus == .leave { return .other }
+        return rollcall.attendanceStatus
+    }
+
+    private var total: Int { visibleRollcalls.filter { $0.scored }.count }
+    private var present: Int { visibleRollcalls.filter { $0.scored && effectiveStatus(for: $0) == .present }.count }
+    private var absent: Int { visibleRollcalls.filter { $0.scored && effectiveStatus(for: $0) == .absent }.count }
+    private var rate: Double { total > 0 ? Double(present) / Double(total) : 0 }
+
+    var body: some View {
+        List {
+            if isLoading {
+                Section {
+                    HStack { Spacer(); ProgressView(); Spacer() }
+                        .listRowBackground(Color.clear)
+                }
+            } else if let error {
+                Section {
+                    Text(error).foregroundStyle(.secondary)
+                }
+            } else {
+                Section {
+                    HStack {
+                        Spacer()
+                        VStack(spacing: 8) {
+                            ZStack {
+                                Circle()
+                                    .stroke(Color.secondary.opacity(0.15), lineWidth: 8)
+                                    .frame(width: 80, height: 80)
+                                Circle()
+                                    .trim(from: 0, to: rate)
+                                    .stroke(rate >= 0.8 ? Color.green : rate >= 0.6 ? Color.orange : Color.red,
+                                            style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                                    .frame(width: 80, height: 80)
+                                    .rotationEffect(.degrees(-90))
+                                Text("\(Int(rate * 100))%")
+                                    .font(.title3.weight(.bold))
+                            }
+                            Text("出席率")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                    }
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .padding(.vertical, 8)
+                }
+
+                Section {
+                    HStack {
+                        attendanceStat(label: "出席", count: present, color: .green)
+                        Spacer()
+                        attendanceStat(label: "缺席", count: absent, color: .red)
+                        Spacer()
+                        attendanceStat(label: "計分次數", count: total, color: .secondary)
+                    }
+                    .padding(.vertical, 4)
+                }
+
+                if visibleRollcalls.isEmpty {
+                    Section {
+                        Text("無點名紀錄").foregroundStyle(.secondary)
+                    }
+                } else {
+                    Section("點名紀錄") {
+                        ForEach(visibleRollcalls) { rollcall in
+                            AttendanceRollcallRow(rollcall: rollcall, overrideStatus: effectiveStatus(for: rollcall))
+                        }
+                    }
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .navigationTitle("\(enrollment.user.name) 的出缺席")
+        .navigationBarTitleDisplayMode(.large)
+        .task { await load() }
+    }
+
+    private func attendanceStat(label: String, count: Int, color: Color) -> some View {
+        VStack(spacing: 4) {
+            Text("\(count)")
+                .font(.title2.weight(.bold))
+                .foregroundStyle(color)
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func load() async {
+        isLoading = true
+        do {
+            rollcalls = try await TronClassAPIService.shared.getStudentAttendanceRollcalls(
+                courseCode: courseCode,
+                userId: enrollment.user.id
+            )
+        } catch {
+            self.error = "無法載入出缺席紀錄"
+        }
+        isLoading = false
     }
 }
 

@@ -61,6 +61,7 @@ struct DebugView: View {
     @Environment(\.fjuService) private var service
     @Environment(AuthenticationManager.self) private var authManager
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = true
+    @AppStorage("attendance.hideLeaveDetails") private var hideLeaveDetails = true
     @State private var showOnboarding = false
     @State private var courses: [Course] = []
     @State private var grades: [Grade] = []
@@ -355,6 +356,8 @@ struct DebugView: View {
                 InfoRow(label: "缺席", value: "\(absentCount)")
                 InfoRow(label: "遲到", value: "\(lateCount)")
                 InfoRow(label: "請假", value: "\(excusedCount)")
+                Toggle("隱藏其他同學的假別詳情", isOn: $hideLeaveDetails)
+                    .font(.subheadline)
             }
 
             // MARK: 行事曆事件

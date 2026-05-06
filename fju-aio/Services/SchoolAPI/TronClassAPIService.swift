@@ -28,6 +28,11 @@ actor TronClassAPIService {
         let cachedAt: Date
     }
 
+    private struct AttendanceRollcallCacheEntry {
+        let rollcalls: [AttendanceRollcall]
+        let cachedAt: Date
+    }
+
     /// Cached course list from /api/my-courses (one entry for the whole session)
     private var myCoursesCache: [TronClassCourseSummary]? = nil
 
@@ -37,9 +42,13 @@ actor TronClassAPIService {
     private var currentUserAvatarCache: [Int: UserAvatarCacheEntry] = [:]
     private var currentUserAvatarFetchTasks: [Int: Task<String?, Error>] = [:]
 
+    /// Keyed by "\(courseId):\(userId)"
+    private var attendanceRollcallCache: [String: AttendanceRollcallCacheEntry] = [:]
+
     /// How long enrollment data is considered fresh (10 minutes)
     private let enrollmentCacheTTL: TimeInterval = 600
     private let avatarCacheTTL: TimeInterval = 60 * 60
+    private let attendanceCacheTTL: TimeInterval = 300  // 5 minutes
 
     private init() {}
 
@@ -49,6 +58,7 @@ actor TronClassAPIService {
         avatarCacheByCourseId.removeAll()
         currentUserAvatarCache.removeAll()
         currentUserAvatarFetchTasks.removeAll()
+        attendanceRollcallCache.removeAll()
     }
     
     // MARK: - Notifications
@@ -176,6 +186,43 @@ actor TronClassAPIService {
             cachedAt: Date()
         )
         return result
+    }
+
+    /// Fetches the current user's attendance rollcalls for the TronClass course matching the given course code.
+    func getMyAttendanceRollcalls(courseCode: String) async throws -> [AttendanceRollcall] {
+        let session = try await authService.getValidSession()
+        let courses = try await getMyCourses()
+        guard let match = courses.first(where: {
+            Self.outlineLookupKeys(for: $0).contains(courseCode) ||
+            Self.outlineLookupKeys(for: $0).contains(where: { courseCode.contains($0) || $0.contains(courseCode) })
+        }) else {
+            return []
+        }
+        return try await cachedAttendanceRollcalls(courseId: match.id, userId: session.userId)
+    }
+
+    /// Fetches another student's attendance rollcalls for the TronClass course matching the given course code.
+    func getStudentAttendanceRollcalls(courseCode: String, userId: Int) async throws -> [AttendanceRollcall] {
+        let courses = try await getMyCourses()
+        guard let match = courses.first(where: {
+            Self.outlineLookupKeys(for: $0).contains(courseCode) ||
+            Self.outlineLookupKeys(for: $0).contains(where: { courseCode.contains($0) || $0.contains(courseCode) })
+        }) else {
+            return []
+        }
+        return try await cachedAttendanceRollcalls(courseId: match.id, userId: userId)
+    }
+
+    private func cachedAttendanceRollcalls(courseId: Int, userId: Int) async throws -> [AttendanceRollcall] {
+        let key = "\(courseId):\(userId)"
+        if let entry = attendanceRollcallCache[key],
+           Date().timeIntervalSince(entry.cachedAt) < attendanceCacheTTL {
+            logger.info("📋 Attendance cache hit for \(key)")
+            return entry.rollcalls
+        }
+        let rollcalls = try await RollcallService.shared.fetchAttendanceRollcalls(courseId: courseId, userId: userId)
+        attendanceRollcallCache[key] = AttendanceRollcallCacheEntry(rollcalls: rollcalls, cachedAt: Date())
+        return rollcalls
     }
 
     func cachedEnrollments(courseCode: String) -> ([Enrollment], [String: String])? {
@@ -312,7 +359,7 @@ actor TronClassAPIService {
         return components.url?.absoluteString ?? rawValue
     }
 
-    private func getMyCourses() async throws -> [TronClassCourseSummary] {
+    func getMyCourses() async throws -> [TronClassCourseSummary] {
         if let cached = myCoursesCache {
             return cached
         }

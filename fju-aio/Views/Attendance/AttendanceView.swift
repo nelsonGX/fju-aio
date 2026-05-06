@@ -19,14 +19,17 @@ struct AttendanceView: View {
         return filtered.sorted { $0.date > $1.date }
     }
 
-    private var summary: (total: Int, present: Int, absent: Int, late: Int, excused: Int) {
+    private var summary: (total: Int, present: Int, absent: Int, late: Int, excused: Int, publicLeave: Int, leave: Int, other: Int) {
         let r = filteredRecords
         return (
             r.count,
             r.filter { $0.status == .present }.count,
             r.filter { $0.status == .absent }.count,
             r.filter { $0.status == .late }.count,
-            r.filter { $0.status == .excused }.count
+            r.filter { $0.status == .excused }.count,
+            r.filter { $0.status == .publicLeave }.count,
+            r.filter { $0.status == .leave }.count,
+            r.filter { $0.status == .other }.count
         )
     }
 
@@ -93,14 +96,32 @@ struct AttendanceView: View {
     }
 
     private var summaryCard: some View {
-        HStack {
-            summaryItem(label: "出席", count: summary.present, color: .green)
-            Spacer()
-            summaryItem(label: "缺席", count: summary.absent, color: .red)
-            Spacer()
-            summaryItem(label: "遲到", count: summary.late, color: .orange)
-            Spacer()
-            summaryItem(label: "請假", count: summary.excused, color: .blue)
+        VStack(spacing: 12) {
+            HStack {
+                summaryItem(label: "出席", count: summary.present, color: .green)
+                Spacer()
+                summaryItem(label: "缺席", count: summary.absent, color: .red)
+                Spacer()
+                summaryItem(label: "遲到", count: summary.late, color: .orange)
+                Spacer()
+                summaryItem(label: "請假", count: summary.excused, color: .blue)
+            }
+            if summary.publicLeave > 0 || summary.leave > 0 || summary.other > 0 {
+                HStack {
+                    if summary.publicLeave > 0 {
+                        summaryItem(label: "公假", count: summary.publicLeave, color: .purple)
+                        Spacer()
+                    }
+                    if summary.leave > 0 {
+                        summaryItem(label: "假", count: summary.leave, color: .teal)
+                        Spacer()
+                    }
+                    if summary.other > 0 {
+                        summaryItem(label: "其他", count: summary.other, color: .secondary)
+                        Spacer()
+                    }
+                }
+            }
         }
         .padding()
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))

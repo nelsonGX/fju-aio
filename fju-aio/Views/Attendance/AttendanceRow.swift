@@ -44,6 +44,9 @@ struct AttendanceRow: View {
         case .absent: return .red
         case .late: return .orange
         case .excused: return .blue
+        case .publicLeave: return .purple
+        case .leave: return .teal
+        case .other: return .secondary
         }
     }
 }

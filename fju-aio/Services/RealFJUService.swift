@@ -103,12 +103,9 @@ final class RealFJUService: FJUServiceProtocol, @unchecked Sendable {
         let session = try await TronClassAuthService.shared.getValidSession()
         let userId = session.userId
 
-        let todos = try await TronClassAPIService.shared.getTodos()
-        var seen = Set<Int>()
-        let courses = todos.compactMap { todo -> (id: Int, name: String)? in
-            guard seen.insert(todo.course_id).inserted else { return nil }
-            return (todo.course_id, todo.course_name)
-        }
+        // Use getMyCourses() so the list is stable regardless of pending todos
+        let tronCourses = try await TronClassAPIService.shared.getMyCourses()
+        let courses = tronCourses.map { (id: $0.id, name: $0.name) }
 
         guard !courses.isEmpty else { return [] }
 

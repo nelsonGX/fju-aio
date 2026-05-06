@@ -25,12 +25,26 @@ nonisolated struct AttendanceRollcall: Identifiable, Codable, Sendable {
         ISO8601DateFormatter().date(from: rollcall_time)
     }
 
+    /// Non-empty when status == "on_leave"; contains the leave type e.g. "病假", "事假"
+    var leaveReason: String? {
+        let detail = student_status_detail.trimmingCharacters(in: .whitespaces)
+        return detail.isEmpty ? nil : detail
+    }
+
+    /// True when this record is any kind of approved leave (on_sick_leave, on_personal_leave, etc.)
+    var isLeave: Bool {
+        status.hasSuffix("_leave") && status != "on_public_leave"
+    }
+
     var attendanceStatus: AttendanceRecord.AttendanceStatus {
         switch status {
         case "absent": return .absent
         case "on_call_fine", "on_call": return .present
-        case "late": return .late
-        default: return .absent
+        case "late", "on_call_arrive_late": return .late
+        case "on_public_leave": return .publicLeave
+        default:
+            if isLeave { return .leave }
+            return .other
         }
     }
 }
