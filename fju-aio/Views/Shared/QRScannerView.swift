@@ -48,6 +48,9 @@ final class ScannerViewController: UIViewController {
     private var previewLayer: AVCaptureVideoPreviewLayer?
     private var issueView: UIView?
     private var hasPresentedCameraAlert = false
+    /// True after setupCamera() has configured the session but before startRunning() is called.
+    /// startRunning() is deferred to viewDidLayoutSubviews so the preview layer has a real frame.
+    private var pendingStart = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -73,10 +76,9 @@ final class ScannerViewController: UIViewController {
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        pendingStart = false
         captureSession?.stopRunning()
         // Tear down the session completely so the next presentation starts fresh.
-        // Without this, the session can be in a stale state when the sheet is
-        // reopened, causing the camera feed to silently fail.
         previewLayer?.removeFromSuperlayer()
         previewLayer = nil
         captureSession = nil
@@ -86,6 +88,12 @@ final class ScannerViewController: UIViewController {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         previewLayer?.frame = view.bounds
+        // Start the session here instead of in setupCamera() so we are guaranteed
+        // to have a real (non-zero) frame before the preview layer becomes visible.
+        if pendingStart, let session = captureSession, !session.isRunning {
+            pendingStart = false
+            DispatchQueue.global(qos: .userInitiated).async { session.startRunning() }
+        }
     }
 
     private func checkCameraPermissionAndSetup() {
@@ -138,9 +146,9 @@ final class ScannerViewController: UIViewController {
         captureSession = session
         issueView?.removeFromSuperview()
         issueView = nil
-        // Start the session on a background thread; called from viewDidAppear so the view
-        // is guaranteed to be in the window hierarchy at this point.
-        DispatchQueue.global(qos: .userInitiated).async { session.startRunning() }
+        // Defer startRunning() to viewDidLayoutSubviews so the preview layer has a
+        // real frame (non-zero bounds) before the session starts producing frames.
+        pendingStart = true
     }
 
     private func showCameraPermissionIssue() {
