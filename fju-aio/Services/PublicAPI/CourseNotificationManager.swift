@@ -24,7 +24,7 @@ final class CourseNotificationManager {
         observePushToStartTokens()
         observeActivityUpdates()
         Task {
-            await registerCurrentPushToStartTokenIfAvailable()
+            await registerCurrentPushToStartTokenIfAvailable(force: false, retryIfUnavailable: true)
         }
     }
 
@@ -149,7 +149,7 @@ final class CourseNotificationManager {
             return
         }
         lastCourseSnapshot = courses
-        await registerCurrentPushToStartTokenIfAvailable()
+        await registerCurrentPushToStartTokenIfAvailable(force: true, retryIfUnavailable: true)
         await scheduleRemoteCourseActivities(
             for: courses,
             semesterStartDate: overrideSemesterStartDate,
@@ -199,7 +199,7 @@ final class CourseNotificationManager {
             classStartDate: startDate,
             classEndDate: endDate
         )
-        let content = ActivityContent(state: state, staleDate: endDate.addingTimeInterval(60))
+        let content = ActivityContent(state: state, staleDate: staleDate(for: state))
 
         if let existingActivity = runningActivity(for: course) {
             activeActivityIDs[course.id] = existingActivity.id
@@ -244,7 +244,7 @@ final class CourseNotificationManager {
             classStartDate: startDate,
             classEndDate: endDate
         )
-        let content = ActivityContent(state: newState, staleDate: endDate.addingTimeInterval(120))
+        let content = ActivityContent(state: newState, staleDate: staleDate(for: newState))
         await activity.update(content)
         print("[CourseNotification] ✅ Live Activity 更新: phase=\(phase.rawValue)")
     }
@@ -331,7 +331,7 @@ final class CourseNotificationManager {
             classStartDate: startDate,
             classEndDate: endDate
         )
-        let content = ActivityContent(state: state, staleDate: endDate.addingTimeInterval(60))
+        let content = ActivityContent(state: state, staleDate: staleDate(for: state))
         do {
             let activity = try Activity.request(
                 attributes: attributes,
@@ -375,7 +375,7 @@ final class CourseNotificationManager {
             classStartDate: startDate,
             classEndDate: endDate
         )
-        let content = ActivityContent(state: state, staleDate: endDate.addingTimeInterval(90))
+        let content = ActivityContent(state: state, staleDate: staleDate(for: state))
 
         do {
             let activity = try Activity.request(
@@ -426,7 +426,7 @@ final class CourseNotificationManager {
             classStartDate: startDate,
             classEndDate: endDate
         )
-        let content = ActivityContent(state: state, staleDate: endDate.addingTimeInterval(60))
+        let content = ActivityContent(state: state, staleDate: staleDate(for: state))
         do {
             let activity = try Activity.request(
                 attributes: attributes,
@@ -800,23 +800,43 @@ final class CourseNotificationManager {
         if #available(iOS 17.2, *) {
             Task {
                 for await tokenData in Activity<CourseActivityAttributes>.pushToStartTokenUpdates {
-                    await registerPushToStartToken(tokenData)
+                    await registerPushToStartToken(tokenData, force: false)
                 }
             }
         }
     }
 
-    private func registerCurrentPushToStartTokenIfAvailable() async {
-        guard #available(iOS 17.2, *),
-              let tokenData = Activity<CourseActivityAttributes>.pushToStartToken else { return }
-        await registerPushToStartToken(tokenData)
+    private func registerCurrentPushToStartTokenIfAvailable(force: Bool, retryIfUnavailable: Bool) async {
+        guard #available(iOS 17.2, *) else {
+            print("[CourseNotification] push-to-start token 需要 iOS 17.2 以上")
+            return
+        }
+
+        if let tokenData = Activity<CourseActivityAttributes>.pushToStartToken {
+            await registerPushToStartToken(tokenData, force: force)
+            return
+        }
+
+        print("[CourseNotification] push-to-start token 尚未可用")
+        guard retryIfUnavailable else { return }
+
+        Task {
+            for attempt in 1...5 {
+                try? await Task.sleep(nanoseconds: UInt64(attempt * 2) * 1_000_000_000)
+                if let tokenData = Activity<CourseActivityAttributes>.pushToStartToken {
+                    await self.registerPushToStartToken(tokenData, force: force)
+                    return
+                }
+            }
+            print("[CourseNotification] ⚠️ push-to-start token 重試後仍不可用")
+        }
     }
 
-    private func registerPushToStartToken(_ tokenData: Data) async {
+    private func registerPushToStartToken(_ tokenData: Data, force: Bool) async {
         let tokenHex = hexString(from: tokenData)
         let identity = await notificationIdentity()
         let registrationKey = "\(identity.userId):\(identity.deviceId):\(tokenHex)"
-        if UserDefaults.standard.string(forKey: Keys.lastRegisteredPushToStartToken) == registrationKey {
+        if !force, UserDefaults.standard.string(forKey: Keys.lastRegisteredPushToStartToken) == registrationKey {
             return
         }
 
@@ -908,10 +928,7 @@ final class CourseNotificationManager {
                 classStartDate: startDate,
                 classEndDate: endDate
             )
-            let content = ActivityContent(
-                state: updatedState,
-                staleDate: endDate.addingTimeInterval(liveActivityDismissalDelay)
-            )
+            let content = ActivityContent(state: updatedState, staleDate: staleDate(for: updatedState))
             await activity.update(content)
             print("[CourseNotification] ✅ 本機切換遠端啟動 Live Activity: \(activity.id) phase=\(phase.rawValue)")
         }
@@ -1112,6 +1129,17 @@ final class CourseNotificationManager {
 
     private func unixSeconds(_ date: Date) -> Int {
         Int(date.timeIntervalSince1970.rounded(.down))
+    }
+
+    private func staleDate(for state: CourseActivityAttributes.ContentState) -> Date {
+        switch state.phase {
+        case .before:
+            return state.classStartDate
+        case .during:
+            return state.classEndDate
+        case .ended:
+            return state.classEndDate.addingTimeInterval(liveActivityDismissalDelay)
+        }
     }
 
     private func hexString(from data: Data) -> String {
