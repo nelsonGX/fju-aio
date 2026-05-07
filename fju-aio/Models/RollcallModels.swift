@@ -91,6 +91,14 @@ enum RollcallCheckInResult {
     case failure(String)
 }
 
+/// Per-friend result shown in the group check-in status log.
+enum FriendCheckInStatus: Sendable {
+    case success
+    case authFailed
+    case notEnrolled
+    case checkInFailed(String)
+}
+
 enum RollcallError: LocalizedError {
     case sessionExpired
     case wrongCode

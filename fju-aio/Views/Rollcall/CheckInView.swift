@@ -6,6 +6,8 @@ struct CheckInView: View {
     @State private var rollcalls: [Rollcall] = []
     @State private var isLoading = false
     @State private var checkInResults: [Int: RollcallCheckInResult] = [:]
+    /// Per-rollcall friend check-in status log (empNo → status)
+    @State private var friendCheckInResults: [Int: [String: FriendCheckInStatus]] = [:]
     @State private var showManualEntry = false
     @State private var showQRScanner = false
     @State private var selectedRollcall: Rollcall? = nil
@@ -33,6 +35,7 @@ struct CheckInView: View {
                 RollcallRowView(
                     rollcall: rollcall,
                     result: checkInResults[rollcall.rollcall_id],
+                    friendResults: friendCheckInResults[rollcall.rollcall_id] ?? [:],
                     proxyFriends: rollcallFriends[rollcall.rollcall_id] ?? [],
                     onManualEntry: { friends in
                         pendingManualFriends = friends
@@ -116,7 +119,6 @@ struct CheckInView: View {
     private func loadFriendsForRollcalls() async {
         let credFriends = await MainActor.run { FriendStore.shared.credentialedFriends }
         guard !credFriends.isEmpty else { return }
-        let credEmpNos = Set(credFriends.map(\.empNo))
 
         await withTaskGroup(of: (Int, [FriendRecord]).self) { group in
             for rollcall in rollcalls {
@@ -125,7 +127,10 @@ struct CheckInView: View {
                 group.addTask {
                     let (students, _) = (try? await TronClassAPIService.shared.getEnrollments(courseCode: courseCode)) ?? ([], [:])
                     let classEmpNos = Set(students.map(\.user.user_no))
-                    let matched = credFriends.filter { classEmpNos.contains($0.empNo) || credEmpNos.contains($0.empNo) }
+                    // Only include friends whose student number actually appears in the
+                    // course enrollment list — the old condition also tested credEmpNos
+                    // which is always true and bypassed the class membership check.
+                    let matched = credFriends.filter { classEmpNos.contains($0.empNo) }
                     return (rid, matched)
                 }
             }
@@ -139,40 +144,46 @@ struct CheckInView: View {
 
     private func doManualCheckIn(rollcall: Rollcall, code: String, includingFriends: [FriendRecord]?) async {
         print("[CheckIn] Manual check-in: rollcall=\(rollcall.rollcall_id) code=\(code) friends=\(includingFriends?.count ?? 0)")
-        async let selfCheckIn: Bool = {
-            do { return try await RollcallService.shared.manualCheckIn(rollcall: rollcall, code: code) }
-            catch { print("[CheckIn] ❌ Self manual check-in error: \(error)"); return false }
-        }()
 
         if let friends = includingFriends, !friends.isEmpty {
-            async let friendsCheckIn: Void = {
-                await withTaskGroup(of: Void.self) { group in
+            async let selfResult: Bool = {
+                do { return try await RollcallService.shared.manualCheckIn(rollcall: rollcall, code: code) }
+                catch { print("[CheckIn] ❌ Self manual check-in error: \(error)"); return false }
+            }()
+
+            async let friendsResult: [String: FriendCheckInStatus] = {
+                await withTaskGroup(of: (String, FriendCheckInStatus).self) { group in
                     for friend in friends {
                         let f = friend
                         group.addTask {
                             print("[CheckIn] Authenticating friend \(f.empNo) for manual check-in...")
                             guard let creds = try? CredentialStore.shared.retrieveFriendCredentials(empNo: f.empNo) else {
                                 print("[CheckIn] ❌ No credentials for \(f.empNo)")
-                                return
+                                return (f.empNo, .authFailed)
                             }
                             guard let session = try? await GroupRollcallService.shared.authenticateWithCredentials(
                                 username: creds.username, password: creds.password
                             ) else {
                                 print("[CheckIn] ❌ Auth failed for \(f.empNo)")
-                                return
+                                return (f.empNo, .authFailed)
                             }
                             let ok = try? await GroupRollcallService.shared.manualCheckIn(
                                 rollcall: rollcall, numberCode: code, using: session
                             )
                             print("[CheckIn] Friend \(f.empNo) manual check-in: \(ok == true ? "✅" : "❌")")
+                            return (f.empNo, ok == true ? .success : .checkInFailed("數字碼錯誤"))
                         }
                     }
+                    var results: [String: FriendCheckInStatus] = [:]
+                    for await (empNo, status) in group { results[empNo] = status }
+                    return results
                 }
             }()
-            let success = await selfCheckIn
-            await friendsCheckIn
+
+            let (success, fResults) = await (selfResult, friendsResult)
             print("[CheckIn] Manual check-in result: \(success ? "✅" : "❌")")
             checkInResults[rollcall.rollcall_id] = success ? .success(code) : .failure("數字碼錯誤，請再試一次")
+            friendCheckInResults[rollcall.rollcall_id] = fResults
         } else {
             do {
                 let success = try await RollcallService.shared.manualCheckIn(rollcall: rollcall, code: code)
@@ -194,6 +205,7 @@ struct CheckInView: View {
         if let friends = includingFriends, !friends.isEmpty {
             // Authenticate all friends first, then fire all check-ins simultaneously
             var friendSessions: [(FriendRecord, TronClassSession)] = []
+            var friendResults: [String: FriendCheckInStatus] = [:]
             for friend in friends {
                 print("[CheckIn] Authenticating friend \(friend.empNo) for radar...")
                 guard let creds = try? CredentialStore.shared.retrieveFriendCredentials(empNo: friend.empNo),
@@ -201,6 +213,7 @@ struct CheckInView: View {
                           username: creds.username, password: creds.password
                       ) else {
                     print("[CheckIn] ❌ Auth failed for \(friend.empNo)")
+                    friendResults[friend.empNo] = .authFailed
                     continue
                 }
                 print("[CheckIn] ✅ Auth OK for \(friend.empNo)")
@@ -213,8 +226,8 @@ struct CheckInView: View {
                 catch { print("[CheckIn] ❌ Self radar error: \(error)"); return false }
             }()
             let capturedFriendSessions = friendSessions
-            async let friendsResult: Void = {
-                await withTaskGroup(of: Void.self) { group in
+            async let friendSessionResults: [(String, FriendCheckInStatus)] = {
+                await withTaskGroup(of: (String, FriendCheckInStatus).self) { group in
                     for (friend, session) in capturedFriendSessions {
                         let f = friend; let s = session
                         group.addTask {
@@ -222,14 +235,19 @@ struct CheckInView: View {
                                 rollcall: rollcall, latitude: lat, longitude: lon, accuracy: acc, using: s
                             )
                             print("[CheckIn] Friend \(f.empNo) radar: \(ok == true ? "✅" : "❌")")
+                            return (f.empNo, ok == true ? .success : .checkInFailed("雷達範圍外"))
                         }
                     }
+                    var out: [(String, FriendCheckInStatus)] = []
+                    for await pair in group { out.append(pair) }
+                    return out
                 }
             }()
-            let success = await selfResult
-            await friendsResult
+            let (success, sessionResults) = await (selfResult, friendSessionResults)
+            for (empNo, status) in sessionResults { friendResults[empNo] = status }
             print("[CheckIn] Radar check-in result: \(success ? "✅" : "❌")")
             checkInResults[rollcall.rollcall_id] = success ? .success(nil) : .failure("雷達點名失敗，可能不在教室範圍內")
+            friendCheckInResults[rollcall.rollcall_id] = friendResults
         } else {
             do {
                 let success = try await RollcallService.shared.radarCheckIn(rollcall: rollcall, latitude: lat, longitude: lon, accuracy: acc)
@@ -249,8 +267,8 @@ struct CheckInView: View {
                 do { return try await RollcallService.shared.qrCheckIn(rollcall: rollcall, qrContent: qrContent) }
                 catch { print("[CheckIn] ❌ Self QR error: \(error)"); return false }
             }()
-            async let friendsResult: Void = {
-                await withTaskGroup(of: Void.self) { group in
+            async let friendResults: [String: FriendCheckInStatus] = {
+                await withTaskGroup(of: (String, FriendCheckInStatus).self) { group in
                     for (friend, session) in friendSessions {
                         let f = friend; let s = session
                         group.addTask {
@@ -258,14 +276,18 @@ struct CheckInView: View {
                                 rollcall: rollcall, qrContent: qrContent, using: s
                             )
                             print("[CheckIn] Friend \(f.empNo) QR: \(ok == true ? "✅" : "❌")")
+                            return (f.empNo, ok == true ? .success : .checkInFailed("QR 簽到失敗"))
                         }
                     }
+                    var results: [String: FriendCheckInStatus] = [:]
+                    for await (empNo, status) in group { results[empNo] = status }
+                    return results
                 }
             }()
-            let success = await selfResult
-            await friendsResult
+            let (success, fResults) = await (selfResult, friendResults)
             print("[CheckIn] QR check-in result: \(success ? "✅" : "❌")")
             checkInResults[rollcall.rollcall_id] = success ? .success(nil) : .failure("QR Code 點名失敗，請再試一次")
+            friendCheckInResults[rollcall.rollcall_id] = fResults
         } else {
             do {
                 let success = try await RollcallService.shared.qrCheckIn(rollcall: rollcall, qrContent: qrContent)
@@ -284,6 +306,8 @@ struct CheckInView: View {
 private struct RollcallRowView: View {
     let rollcall: Rollcall
     let result: RollcallCheckInResult?
+    /// Per-friend check-in statuses returned after a group check-in (empNo → status)
+    let friendResults: [String: FriendCheckInStatus]
     let proxyFriends: [FriendRecord]
     /// Called when user wants to enter a number code; passes selected proxy friends (empty if group mode off)
     let onManualEntry: ([FriendRecord]) -> Void
@@ -377,6 +401,29 @@ private struct RollcallRowView: View {
                     }
                     .buttonStyle(.borderedProminent).tint(.blue)
                 }
+            }
+
+            // Friend check-in status log (shown after a group check-in completes)
+            if !friendResults.isEmpty {
+                Divider()
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("朋友簽到結果").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    ForEach(proxyFriends.filter { friendResults[$0.empNo] != nil }) { friend in
+                        HStack(spacing: 8) {
+                            friendStatusIcon(friendResults[friend.empNo]!)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(friend.displayName).font(.caption)
+                                if case .checkInFailed(let msg) = friendResults[friend.empNo]! {
+                                    Text(msg).font(.caption2).foregroundStyle(.secondary)
+                                } else if case .authFailed = friendResults[friend.empNo]! {
+                                    Text("帳號登入失敗").font(.caption2).foregroundStyle(.secondary)
+                                }
+                            }
+                            Spacer()
+                        }
+                    }
+                }
+                .padding(.vertical, 4)
             }
 
             // Group rollcall section (only if there are credentialed friends)
@@ -502,6 +549,20 @@ private struct RollcallRowView: View {
             username: creds.username, password: creds.password
         ) {
             friendSessions[friend.id] = session
+        }
+    }
+
+    @ViewBuilder
+    private func friendStatusIcon(_ status: FriendCheckInStatus) -> some View {
+        switch status {
+        case .success:
+            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green).font(.caption)
+        case .authFailed:
+            Image(systemName: "lock.fill").foregroundStyle(.orange).font(.caption)
+        case .notEnrolled:
+            Image(systemName: "person.fill.xmark").foregroundStyle(.orange).font(.caption)
+        case .checkInFailed:
+            Image(systemName: "xmark.circle.fill").foregroundStyle(.red).font(.caption)
         }
     }
 

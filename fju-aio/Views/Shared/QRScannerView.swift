@@ -74,6 +74,13 @@ final class ScannerViewController: UIViewController {
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         captureSession?.stopRunning()
+        // Tear down the session completely so the next presentation starts fresh.
+        // Without this, the session can be in a stale state when the sheet is
+        // reopened, causing the camera feed to silently fail.
+        previewLayer?.removeFromSuperlayer()
+        previewLayer = nil
+        captureSession = nil
+        hasPresentedCameraAlert = false
     }
 
     override func viewDidLayoutSubviews() {
