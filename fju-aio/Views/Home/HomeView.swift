@@ -18,22 +18,12 @@ struct HomeView: View {
 
     private let cache = AppCache.shared
 
-    private var columns: [GridItem] {
-        [GridItem(.adaptive(minimum: 160, maximum: 240), spacing: 12)]
-    }
-
-    private var todayCourseCardWidth: CGFloat {
-        horizontalSizeClass == .regular ? 220 : 170
-    }
-
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: 20) {
                 heroSection
 
-                if !todayCourses.isEmpty {
-                    todayCoursesSection
-                }
+                todayScheduleSection
 
                 moduleGridSection
 
@@ -42,7 +32,7 @@ struct HomeView: View {
                 }
             }
             .readableContent()
-            .padding(.bottom, 24)
+            .padding(.bottom, 32)
         }
         .background(Color(.systemGroupedBackground))
         .navigationTitle("輔大 All In One")
@@ -90,43 +80,39 @@ struct HomeView: View {
                     )
                 )
                 .frame(maxWidth: .infinity)
-                .frame(height: 150)
+                .frame(height: 160)
+
+            // Decorative circles
+            Circle()
+                .fill(.white.opacity(0.07))
+                .frame(width: 200, height: 200)
+                .offset(x: 120, y: -30)
+                .allowsHitTesting(false)
+            Circle()
+                .fill(.white.opacity(0.05))
+                .frame(width: 110, height: 110)
+                .offset(x: 60, y: -80)
+                .allowsHitTesting(false)
 
             // Content
-            HStack(alignment: .bottom) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(greetingText)
-                        .font(.title.weight(.bold))
-                        .foregroundStyle(.white)
-                    Text(dateString)
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.8))
-                }
-
-                Spacer()
-
-                // Next course pill
-                if let next = nextUpcomingCourse {
-                    nextCoursePill(next)
-                }
+            VStack(alignment: .leading, spacing: 6) {
+                Text(greetingText)
+                    .font(.title.weight(.bold))
+                    .foregroundStyle(.white)
+                Text(dateString)
+                    .font(.subheadline)
+                    .foregroundStyle(.white.opacity(0.75))
             }
             .padding(20)
         }
-        .overlay(alignment: .topTrailing) {
-            Circle()
-                .fill(.white.opacity(0.08))
-                .frame(width: 180, height: 180)
-                .offset(x: 48, y: 24)
-                .allowsHitTesting(false)
-        }
-        .overlay(alignment: .topTrailing) {
-            Circle()
-                .fill(.white.opacity(0.05))
-                .frame(width: 100, height: 100)
-                .offset(x: -70, y: -18)
-                .allowsHitTesting(false)
-        }
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+        .overlay(alignment: .bottomTrailing) {
+            if let next = nextUpcomingCourse {
+                nextCoursePill(next)
+                    .padding(.bottom, 14)
+                    .padding(.trailing, 16)
+            }
+        }
         .padding(.top, 8)
     }
 
@@ -144,7 +130,7 @@ struct HomeView: View {
 
     @ViewBuilder
     private func nextCoursePill(_ course: Course) -> some View {
-        VStack(alignment: .trailing, spacing: 2) {
+        VStack(alignment: .trailing, spacing: 1) {
             Text("接下來")
                 .font(.caption2.weight(.medium))
                 .foregroundStyle(.white.opacity(0.7))
@@ -152,13 +138,10 @@ struct HomeView: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.white)
                 .lineLimit(1)
-            Text(FJUPeriod.startTime(for: course.startPeriod))
-                .font(.caption2)
-                .foregroundStyle(.white.opacity(0.8))
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(.white.opacity(0.15), in: RoundedRectangle(cornerRadius: 10))
+        .background(.ultraThinMaterial.opacity(0.8), in: RoundedRectangle(cornerRadius: 10))
     }
 
     /// The first upcoming course today (start time hasn't passed yet).
@@ -197,84 +180,95 @@ struct HomeView: View {
         return formatter.string(from: Date())
     }
 
-    // MARK: - Today's Courses
+    // MARK: - Today's Schedule (vertical list)
 
-    private var todayCoursesSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(title: "今日課程", icon: "clock.fill", iconColor: .blue)
+    private var todayScheduleSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                SectionHeader(title: "今日課程")
+                Spacer()
+                NavigationLink(value: AppDestination.courseSchedule) {
+                    Text("課表")
+                        .font(.subheadline)
+                        .foregroundStyle(AppTheme.accent)
+                }
+            }
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    ForEach(todayCourses) { course in
-                        todayCourseCard(course)
-                            .onTapGesture { selectedCourse = course }
+            if todayCourses.isEmpty {
+                Text(isLoading ? "載入中..." : "今天沒有課，好好休息吧")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(16)
+                    .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(Array(todayCourses.enumerated()), id: \.element.id) { index, course in
+                        Button { selectedCourse = course } label: {
+                            todayCourseRow(course, isLast: index == todayCourses.count - 1)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
-                .padding(.horizontal, 2)
-                .padding(.vertical, 2)
+                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
             }
         }
     }
 
-    private func todayCourseCard(_ course: Course) -> some View {
+    private func todayCourseRow(_ course: Course, isLast: Bool) -> some View {
         let isPast = isCourseInPast(course)
         let isNow = isCourseOngoing(course)
 
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(Color(hex: course.color))
-                    .frame(width: 4, height: 36)
+        return HStack(spacing: 12) {
+            // Time column
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(FJUPeriod.startTime(for: course.startPeriod))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(isPast ? AnyShapeStyle(.tertiary) : (isNow ? AnyShapeStyle(Color(hex: course.color)) : AnyShapeStyle(.secondary)))
+                Text(FJUPeriod.startTime(for: course.endPeriod))
+                    .font(.caption2)
+                    .foregroundStyle(.quaternary)
+            }
+            .frame(width: 44, alignment: .trailing)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(course.name)
-                        .font(.subheadline.weight(.semibold))
-                        .lineLimit(2)
-                        .foregroundStyle(isPast ? .secondary : .primary)
+            // Color strip
+            RoundedRectangle(cornerRadius: 2)
+                .fill(Color(hex: course.color).opacity(isPast ? 0.35 : 1))
+                .frame(width: 3)
+                .padding(.vertical, 4)
 
-                    Text(course.timeSlot)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer(minLength: 0)
+            // Course info
+            VStack(alignment: .leading, spacing: 3) {
+                Text(course.name)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                    .foregroundStyle(isPast ? .secondary : .primary)
+                Text(course.location)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
-            Divider()
+            Spacer(minLength: 0)
 
-            HStack(spacing: 6) {
-                Label(course.location, systemImage: "location.fill")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-
-                Spacer()
-
-                if isNow {
-                    Text("上課中")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color(hex: course.color), in: Capsule())
-                } else {
-                    Text(FJUPeriod.startTime(for: course.startPeriod))
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(isPast ? AnyShapeStyle(.tertiary) : AnyShapeStyle(Color(hex: course.color)))
-                }
+            // Status badge
+            if isNow {
+                Text("上課中")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(Color(hex: course.color), in: Capsule())
             }
         }
-        .padding(12)
-        .frame(width: todayCourseCardWidth, alignment: .leading)
-        .background(Color(.secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: AppTheme.smallCornerRadius))
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.smallCornerRadius)
-                .stroke(
-                    isNow ? Color(hex: course.color).opacity(0.5) : Color.clear,
-                    lineWidth: 1.5
-                )
-        )
-        .opacity(isPast ? 0.6 : 1)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .contentShape(Rectangle())
+        .opacity(isPast ? 0.65 : 1)
+        .overlay(alignment: .bottom) {
+            if !isLast {
+                Divider().padding(.leading, 70)
+            }
+        }
     }
 
     private func isCourseInPast(_ course: Course) -> Bool {
@@ -306,32 +300,33 @@ struct HomeView: View {
         return currentMinutes >= startMinutes && currentMinutes <= endMinutes
     }
 
-    // MARK: - Module Grid
+    // MARK: - Module Grid (icon launcher style)
+
+    private let iconColumns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 4)
 
     private var moduleGridSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack {
-                SectionHeader(title: "功能", icon: "square.grid.2x2.fill", iconColor: .orange)
+                SectionHeader(title: "功能")
                 Spacer()
                 Button(action: { isEditing = true }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "pencil")
-                            .font(.caption)
-                        Text("編輯")
-                            .font(.subheadline)
-                    }
-                    .foregroundStyle(AppTheme.accent)
+                    Text("編輯")
+                        .font(.subheadline)
+                        .foregroundStyle(AppTheme.accent)
                 }
             }
 
             if preferences.selectedModules.isEmpty {
                 emptyModulesPlaceholder
             } else {
-                LazyVGrid(columns: columns, spacing: 12) {
+                LazyVGrid(columns: iconColumns, spacing: 16) {
                     ForEach(preferences.selectedModules) { module in
-                        ModuleCard(module: module)
+                        ModuleIconCell(module: module)
                     }
                 }
+                .padding(.vertical, 16)
+                .padding(.horizontal, 8)
+                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
             }
         }
     }
@@ -361,21 +356,22 @@ struct HomeView: View {
     // MARK: - Bulletin Notifications
 
     private var bulletinSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(title: "公告通知", icon: "bell.fill", iconColor: .red)
+        VStack(alignment: .leading, spacing: 10) {
+            SectionHeader(title: "公告通知")
 
-            VStack(spacing: 8) {
-                ForEach(bulletinNotifications) { notification in
-                    bulletinRow(notification)
+            VStack(spacing: 0) {
+                ForEach(Array(bulletinNotifications.enumerated()), id: \.element.id) { index, notification in
+                    bulletinRow(notification, isLast: index == bulletinNotifications.count - 1)
                         .onTapGesture { selectedBulletin = notification }
                 }
             }
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
         }
     }
 
-    private func bulletinRow(_ notification: TronClassNotification) -> some View {
+    private func bulletinRow(_ notification: TronClassNotification, isLast: Bool) -> some View {
         HStack(spacing: 12) {
-            // Colored accent bar
+            // Colored accent strip
             RoundedRectangle(cornerRadius: 2)
                 .fill(AppTheme.accent)
                 .frame(width: 3)
@@ -415,9 +411,13 @@ struct HomeView: View {
                 .font(.caption)
                 .foregroundStyle(.tertiary)
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: AppTheme.smallCornerRadius))
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .overlay(alignment: .bottom) {
+            if !isLast {
+                Divider().padding(.leading, 20)
+            }
+        }
     }
 
     /// Strip HTML tags and decode common entities for display.
@@ -571,16 +571,73 @@ struct HomeView: View {
 
 private struct SectionHeader: View {
     let title: String
-    let icon: String
-    let iconColor: Color
 
     var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: icon)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(iconColor)
-            Text(title)
-                .font(.headline)
+        Text(title)
+            .font(.headline)
+    }
+}
+
+// MARK: - Module Icon Cell (launcher style)
+
+private struct ModuleIconCell: View {
+    let module: AppModule
+    @Environment(\.openURL) private var openURL
+    @AppStorage("openLinksInApp") private var openLinksInApp = true
+    @State private var showBrowser = false
+    @State private var showDormBrowser = false
+    private static let dormHost = "dorm.fju.edu.tw"
+
+    var body: some View {
+        switch module.type {
+        case .inApp(let destination):
+            NavigationLink(value: destination) {
+                iconCellContent
+            }
+            .buttonStyle(.plain)
+        case .webLink(let url):
+            Button {
+                handleWebLink(url)
+            } label: {
+                iconCellContent
+            }
+            .buttonStyle(.plain)
+            .sheet(isPresented: $showDormBrowser) {
+                DormBrowserView().ignoresSafeArea()
+            }
+            .sheet(isPresented: $showBrowser) {
+                InAppBrowserView(url: url).ignoresSafeArea()
+            }
+        }
+    }
+
+    private var iconCellContent: some View {
+        VStack(spacing: 8) {
+            RoundedRectangle(cornerRadius: 14)
+                .fill(module.color.gradient)
+                .frame(width: 56, height: 56)
+                .overlay {
+                    Image(systemName: module.icon)
+                        .font(.system(size: 24, weight: .medium))
+                        .foregroundStyle(.white)
+                }
+            Text(module.name)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(.primary)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func handleWebLink(_ url: URL) {
+        if url.host == Self.dormHost {
+            showDormBrowser = true
+        } else if openLinksInApp && (url.scheme == "https" || url.scheme == "http") {
+            showBrowser = true
+        } else {
+            openURL(url)
         }
     }
 }

@@ -73,6 +73,7 @@ enum AppDestination: Hashable {
 
 enum AppTab: Hashable {
     case home
+    case courseSchedule
     case allFunctions
     case settings
 }
@@ -82,6 +83,7 @@ enum AppTab: Hashable {
 struct ContentView: View {
     @State private var selectedTab: AppTab = .home
     @State private var homePath = NavigationPath()
+    @State private var courseSchedulePath = NavigationPath()
     @State private var allFunctionsPath = NavigationPath()
     @Binding private var pendingDeepLinkDestination: AppDestination?
     @State private var networkMonitor = NetworkMonitor.shared
@@ -96,6 +98,10 @@ struct ContentView: View {
             homeTab
                 .tabItem { Label("首頁", systemImage: "house.fill") }
                 .tag(AppTab.home)
+
+            courseScheduleTab
+                .tabItem { Label("課表", systemImage: "calendar") }
+                .tag(AppTab.courseSchedule)
 
             allFunctionsTab
                 .tabItem { Label("全部功能", systemImage: "square.grid.2x2.fill") }
@@ -136,6 +142,16 @@ struct ContentView: View {
                     destinationView(for: destination)
                 }
                 .navigationDestination(for: FriendRecord.self) { FriendDetailView(friend: $0) }
+        }
+    }
+
+    @ViewBuilder
+    private var courseScheduleTab: some View {
+        NavigationStack(path: $courseSchedulePath) {
+            CourseScheduleView()
+                .navigationDestination(for: AppDestination.self) { destination in
+                    destinationView(for: destination)
+                }
         }
     }
 
