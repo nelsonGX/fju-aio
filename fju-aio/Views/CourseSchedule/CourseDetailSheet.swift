@@ -199,7 +199,7 @@ struct CourseDetailSheet: View {
                 }
             }
             .listStyle(.insetGrouped)
-            .navigationTitle("課程資訊")
+            .navigationTitle("(course.name)")
             .navigationBarTitleDisplayMode(.inline)
             .task {
                 await loadEnrollments()
@@ -563,6 +563,7 @@ struct EnrollmentListView: View {
                     .foregroundStyle(.tertiary)
             }
             .padding(.vertical, 2)
+        .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -805,8 +806,8 @@ private struct LocationMapSection: View {
                 }
                 Spacer()
             }
-            .padding(.top, 12)
-            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.horizontal, 8)
 
             if #available(iOS 26.0, *) {
                 HStack(spacing: 10) {
@@ -831,9 +832,9 @@ private struct LocationMapSection: View {
                     }
                     .buttonStyle(.glassProminent)
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 10)
-                .padding(.bottom, 14)
+                .padding(.horizontal, 8)
+                .padding(.top, 8)
+                .padding(.bottom, 10)
             } else {
                 HStack(spacing: 10) {
                     Button(action: onOpenInAppMap) {
@@ -857,9 +858,9 @@ private struct LocationMapSection: View {
                     }
                     .buttonStyle(FilledButtonStyle())
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 10)
-                .padding(.bottom, 14)
+                .padding(.horizontal, 8)
+                .padding(.top, 8)
+                .padding(.bottom, 10)
             }
         }
     }
