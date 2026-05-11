@@ -327,12 +327,27 @@ final class HTMLParser: Sendable {
     nonisolated func containsLoginError(in html: String) -> Bool {
         html.contains("帳號或密碼錯誤") || html.contains("登入失敗")
     }
+
+    nonisolated func containsLoginForm(in html: String) -> Bool {
+        html.contains("TxtLdapId") &&
+        html.contains("TxtLdapPwd") &&
+        html.contains("ButLogin")
+    }
+
+    nonisolated func containsAuthenticatedEstuContent(in html: String) -> Bool {
+        html.contains("id=\"LabStuno1\"") ||
+        html.contains("id=\"LabDptno1\"") ||
+        html.contains("id=\"LabTotNum1\"") ||
+        html.contains("id=\"GV_NewSellist\"") ||
+        html.contains("已選課程") ||
+        html.contains("總學分")
+    }
     
     /// Check if the response indicates the session has expired (redirected back to login page without student info)
     nonisolated func containsSessionError(in html: String) -> Bool {
         // If page has the login form (TxtLdapId) but no student info, session has expired
-        let hasLoginForm = html.contains("TxtLdapId") && html.contains("ButLogin")
-        let hasStudentInfo = html.contains("LabStucna1") || html.contains("LabStuno1")
+        let hasLoginForm = containsLoginForm(in: html)
+        let hasStudentInfo = containsAuthenticatedEstuContent(in: html)
         let hasSessionExpiredText = html.contains("Session") && html.contains("過期")
         
         let isError = (hasLoginForm && !hasStudentInfo) || hasSessionExpiredText

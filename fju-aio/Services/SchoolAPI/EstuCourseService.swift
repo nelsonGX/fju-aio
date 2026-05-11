@@ -315,9 +315,7 @@ actor EstuCourseService {
     }
     
     private func isAuthenticatedPage(_ html: String) -> Bool {
-        if html.contains("id=\"GV_NewSellist\"") { return true }
-        if html.contains("id=\"LabStuno1\"") { return true }
-        return false
+        htmlParser.containsAuthenticatedEstuContent(in: html)
     }
 }
 
