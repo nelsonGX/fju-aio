@@ -22,6 +22,7 @@ nonisolated enum AuthenticationError: LocalizedError {
     case invalidCredentials
     case networkError(Error)
     case invalidResponse
+    case serverError(String)
     case sessionExpired
     case tgtNotFound
     case serviceTicketInvalid
@@ -33,6 +34,7 @@ nonisolated enum AuthenticationError: LocalizedError {
         case .invalidCredentials: return "帳號或密碼錯誤"
         case .networkError(let error): return "網路錯誤: \(error.localizedDescription)"
         case .invalidResponse: return "伺服器回應無效"
+        case .serverError(let message): return message
         case .sessionExpired: return "登入已過期，請重新登入"
         case .tgtNotFound: return "無法取得認證票證"
         case .serviceTicketInvalid: return "服務票證無效"
@@ -350,6 +352,7 @@ nonisolated enum TronClassAPIError: LocalizedError {
     case sessionExpired
     case unauthorized
     case invalidResponse
+    case serverError(String)
     case networkError(Error)
     
     var errorDescription: String? {
@@ -357,6 +360,7 @@ nonisolated enum TronClassAPIError: LocalizedError {
         case .sessionExpired: return "Session 已過期，請重新登入"
         case .unauthorized: return "未授權，請重新登入"
         case .invalidResponse: return "伺服器回應無效"
+        case .serverError(let message): return message
         case .networkError(let error): return "網路錯誤: \(error.localizedDescription)"
         }
     }

@@ -8,11 +8,20 @@ struct GradesView: View {
     @State private var semesters: [String] = []
     @State private var selectedSemester = ""
     @State private var isLoading = true
+    @State private var loadError: String?
 
     private let cache = AppCache.shared
 
     var body: some View {
         List {
+            if let loadError {
+                Section {
+                    Label(loadError, systemImage: "exclamationmark.triangle.fill")
+                        .font(.subheadline)
+                        .foregroundStyle(.orange)
+                }
+            }
+
             if let summary = gpaSummary {
                 Section {
                     GPASummaryView(summary: summary)
@@ -85,6 +94,7 @@ struct GradesView: View {
     }
 
     private func loadData(forceRefresh: Bool) async {
+        loadError = nil
         // Show cached data immediately if available
         let showedCachedData = loadCachedDataIfAvailable()
         if !forceRefresh, showedCachedData {
@@ -130,7 +140,9 @@ struct GradesView: View {
                 cache.setGPASummary(newSummary, semester: semesterToLoad)
             }
         }
-        catch {}
+        catch {
+            loadError = "載入成績失敗：\(error.localizedDescription)"
+        }
         isLoading = false
     }
 

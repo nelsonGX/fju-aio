@@ -35,15 +35,16 @@ actor GroupRollcallService {
         tgtReq.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         tgtReq.setValue("*/*", forHTTPHeaderField: "Accept")
         tgtReq.setValue("TronClass/2.14.5 (iPhone; iOS 18.2; Scale/3.00)", forHTTPHeaderField: "User-Agent")
-        let encodedUser = username.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        let encodedPass = password.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
-        tgtReq.httpBody = "username=\(encodedUser)&password=\(encodedPass)".data(using: .utf8)
+        tgtReq.httpBody = [
+            "username": username,
+            "password": password
+        ].formURLEncoded().data(using: .utf8)
 
-        let (_, tgtHTTP) = try await networkService.performRequest(tgtReq, retryPolicy: .none)
+        let (tgtData, tgtHTTP) = try await networkService.performRequest(tgtReq, retryPolicy: .none)
         guard tgtHTTP.statusCode == 201,
               let location = tgtHTTP.value(forHTTPHeaderField: "Location"),
               let tgt = location.components(separatedBy: "/").last else {
-            throw AuthenticationError.invalidCredentials
+            throw AuthenticationError.serverError(Self.serverMessage(from: tgtData) ?? "帳號或密碼錯誤")
         }
 
         // Step 2: Get Service Ticket
@@ -58,7 +59,7 @@ actor GroupRollcallService {
         let (stData, stHTTP) = try await networkService.performRequest(stReq, retryPolicy: .none)
         guard stHTTP.statusCode == 200,
               let serviceTicket = String(data: stData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) else {
-            throw AuthenticationError.serviceTicketInvalid
+            throw AuthenticationError.serverError(Self.serverMessage(from: stData) ?? "服務票證無效")
         }
 
         // Step 3: Exchange for Session
@@ -77,7 +78,7 @@ actor GroupRollcallService {
         let (sessData, sessHTTP) = try await networkService.performRequest(sessionReq, retryPolicy: .none)
         guard sessHTTP.statusCode == 200,
               let sessionId = sessHTTP.value(forHTTPHeaderField: "X-SESSION-ID") else {
-            throw AuthenticationError.missingSessionId
+            throw AuthenticationError.serverError(Self.serverMessage(from: sessData) ?? "無法取得 Session ID")
         }
 
         struct CASResp: Decodable { let user_id: Int }
@@ -114,12 +115,17 @@ actor GroupRollcallService {
 
         let (data, http) = try await networkService.performRequest(request, retryPolicy: .none)
         if http.statusCode == 401 || http.statusCode == 403 { throw RollcallError.sessionExpired }
-        guard http.statusCode == 200 else { return false }
+        guard http.statusCode == 200 else {
+            throw RollcallError.serverMessage(Self.rollcallFailureMessage(from: data) ?? "數字碼點名失敗")
+        }
 
         let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         let status = json?["status"] as? String ?? ""
         logger.info("Group manual check-in result: \(status) for rollcall \(rollcall.rollcall_id)")
-        return status == "on_call" || status == "late"
+        guard status == "on_call" || status == "late" else {
+            throw RollcallError.serverMessage(Self.rollcallFailureMessage(from: data) ?? "數字碼錯誤，請再試一次")
+        }
+        return true
     }
 
     // MARK: - Radar Check-In with friend's session
@@ -150,12 +156,17 @@ actor GroupRollcallService {
 
         let (data, http) = try await networkService.performRequest(request, retryPolicy: .none)
         if http.statusCode == 401 || http.statusCode == 403 { throw RollcallError.sessionExpired }
-        guard http.statusCode == 200 else { return false }
+        guard http.statusCode == 200 else {
+            throw RollcallError.serverMessage(Self.rollcallFailureMessage(from: data) ?? "雷達點名失敗")
+        }
 
         let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         let status = json?["status"] as? String ?? ""
         logger.info("Group radar check-in result: \(status) for rollcall \(rollcall.rollcall_id)")
-        return status == "on_call" || status == "late"
+        guard status == "on_call" || status == "late" else {
+            throw RollcallError.serverMessage(Self.rollcallFailureMessage(from: data) ?? "雷達點名失敗，可能不在教室範圍內")
+        }
+        return true
     }
 
     // MARK: - QR Check-In with friend's session
@@ -179,12 +190,17 @@ actor GroupRollcallService {
 
         let (responseData, http) = try await networkService.performRequest(request, retryPolicy: .none)
         if http.statusCode == 401 || http.statusCode == 403 { throw RollcallError.sessionExpired }
-        guard http.statusCode == 200 else { return false }
+        guard http.statusCode == 200 else {
+            throw RollcallError.serverMessage(Self.rollcallFailureMessage(from: responseData) ?? "QR Code 點名失敗")
+        }
 
         let json = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any]
         let status = json?["status"] as? String ?? ""
         logger.info("Group QR check-in result: \(status) for rollcall \(rollcall.rollcall_id)")
-        return status == "on_call" || status == "late"
+        guard status == "on_call" || status == "late" else {
+            throw RollcallError.serverMessage(Self.rollcallFailureMessage(from: responseData) ?? "QR Code 點名失敗，請再試一次")
+        }
+        return true
     }
 
     private static func parseQRData(from qrContent: String) throws -> String {
@@ -195,6 +211,34 @@ actor GroupRollcallService {
             }
         }
         throw RollcallError.invalidQRCode
+    }
+
+    private nonisolated static func serverMessage(from data: Data) -> String? {
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            for key in ["message", "error", "detail", "msg"] {
+                if let value = json[key] as? String, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return value
+                }
+            }
+        }
+        let text = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return text.isEmpty ? nil : text
+    }
+
+    private nonisolated static func rollcallFailureMessage(from data: Data) -> String? {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            let text = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return text.isEmpty ? nil : text
+        }
+        for key in ["message", "error", "detail", "msg"] {
+            if let value = json[key] as? String, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return value
+            }
+        }
+        if let status = json["status"] as? String, !status.isEmpty {
+            return "點名狀態：\(status)"
+        }
+        return nil
     }
 
     // MARK: - Fetch Active Rollcalls with friend's session
@@ -232,6 +276,19 @@ actor GroupRollcallService {
         var bytes = [UInt8](repeating: 0, count: 16)
         _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
         return bytes.map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+private nonisolated extension Dictionary where Key == String, Value == String {
+    func formURLEncoded() -> String {
+        var allowed = CharacterSet.alphanumerics
+        allowed.insert(charactersIn: "-._~")
+        return map { key, value in
+            let encodedKey = key.addingPercentEncoding(withAllowedCharacters: allowed) ?? ""
+            let encodedValue = value.addingPercentEncoding(withAllowedCharacters: allowed) ?? ""
+            return "\(encodedKey)=\(encodedValue)"
+        }
+        .joined(separator: "&")
     }
 }
 

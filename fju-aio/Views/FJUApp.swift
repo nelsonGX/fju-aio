@@ -166,9 +166,8 @@ struct FJUApp: App {
 
             if let current = semesters.first {
                 preloadStatusText = "同步課程與行事曆..."
-                async let courses = service.fetchCourses(semester: current)
-                async let events = service.fetchCalendarEvents(semester: current)
-                let (c, e) = try await (courses, events)
+                let c = try await service.fetchCourses(semester: current)
+                let e = (try? await service.fetchCalendarEvents(semester: current)) ?? []
                 preloadStatusText = "更新小工具資料..."
                 cache.setCourses(c, semester: current)
                 cache.setCalendarEvents(e, semester: current)

@@ -106,11 +106,14 @@ actor TronClassAuthService {
         request.setValue("zh-Hant-TW;q=1, en-TW;q=0.9, zh-Hans-TW;q=0.8", forHTTPHeaderField: "Accept-Language")
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         
-        let body = "username=\(username.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")&password=\(password.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"
+        let body = [
+            "username": username,
+            "password": password
+        ].formURLEncoded()
         request.httpBody = body.data(using: .utf8)
         
         do {
-            let (_, httpResponse) = try await networkService.performRequest(request)
+            let (data, httpResponse) = try await networkService.performRequest(request)
             
             if httpResponse.statusCode == 400 {
                 logger.error("❌ Invalid credentials (400)")
@@ -121,7 +124,7 @@ actor TronClassAuthService {
                   let location = httpResponse.value(forHTTPHeaderField: "Location"),
                   let tgt = location.components(separatedBy: "/").last else {
                 logger.error("❌ TGT not found in response")
-                throw AuthenticationError.tgtNotFound
+                throw AuthenticationError.serverError(Self.serverMessage(from: data) ?? "無法取得認證票證")
             }
             
             return tgt
@@ -156,7 +159,7 @@ actor TronClassAuthService {
             guard httpResponse.statusCode == 200,
                   let serviceTicket = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) else {
                 logger.error("❌ Service ticket invalid")
-                throw AuthenticationError.serviceTicketInvalid
+                throw AuthenticationError.serverError(Self.serverMessage(from: data) ?? "服務票證無效")
             }
             
             return serviceTicket
@@ -196,7 +199,7 @@ actor TronClassAuthService {
             
             guard httpResponse.statusCode == 200 else {
                 logger.error("❌ Unexpected status code: \(httpResponse.statusCode, privacy: .public)")
-                throw AuthenticationError.invalidResponse
+                throw AuthenticationError.serverError(Self.serverMessage(from: data) ?? "伺服器回應無效")
             }
             
             guard let sessionId = httpResponse.value(forHTTPHeaderField: "X-SESSION-ID") else {
@@ -240,6 +243,19 @@ actor TronClassAuthService {
         // Timestamp is in milliseconds
         let expirationDate = Date(timeIntervalSince1970: timestamp / 1000)
         return expirationDate
+    }
+
+    private nonisolated static func serverMessage(from data: Data) -> String? {
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            for key in ["message", "error", "detail", "msg"] {
+                if let value = json[key] as? String, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return value
+                }
+            }
+        }
+        return String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfEmpty
     }
     
     // MARK: - Session Persistence
@@ -285,5 +301,24 @@ actor TronClassAuthService {
 private nonisolated extension Array {
     subscript(safe index: Index) -> Element? {
         indices.contains(index) ? self[index] : nil
+    }
+}
+
+private nonisolated extension Dictionary where Key == String, Value == String {
+    func formURLEncoded() -> String {
+        var allowed = CharacterSet.alphanumerics
+        allowed.insert(charactersIn: "-._~")
+        return map { key, value in
+            let encodedKey = key.addingPercentEncoding(withAllowedCharacters: allowed) ?? ""
+            let encodedValue = value.addingPercentEncoding(withAllowedCharacters: allowed) ?? ""
+            return "\(encodedKey)=\(encodedValue)"
+        }
+        .joined(separator: "&")
+    }
+}
+
+private nonisolated extension String {
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
     }
 }

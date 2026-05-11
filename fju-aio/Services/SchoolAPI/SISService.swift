@@ -25,7 +25,7 @@ actor SISService {
         request.setValue("Bearer \(session.token)", forHTTPHeaderField: "Authorization")
         
         let (data, httpResponse) = try await networkService.performRequest(request)
-        try handleHTTPError(httpResponse)
+        try handleHTTPError(httpResponse, data: data)
         
         return try JSONDecoder().decode(SISUserInfo.self, from: data)
     }
@@ -42,7 +42,7 @@ actor SISService {
         request.setValue("Bearer \(session.token)", forHTTPHeaderField: "Authorization")
         
         let (data, httpResponse) = try await networkService.performRequest(request)
-        try handleHTTPError(httpResponse)
+        try handleHTTPError(httpResponse, data: data)
         
         let response = try JSONDecoder().decode(StuBaseInfoResponse.self, from: data)
         
@@ -146,7 +146,7 @@ actor SISService {
         request.setValue("Bearer \(session.token)", forHTTPHeaderField: "Authorization")
 
         let (data, httpResponse) = try await networkService.performRequest(request)
-        try handleHTTPError(httpResponse)
+        try handleHTTPError(httpResponse, data: data)
 
         return try JSONDecoder().decode(GradesInquiryResponse.self, from: data)
     }
@@ -203,7 +203,7 @@ actor SISService {
         request.setValue("Bearer \(session.token)", forHTTPHeaderField: "Authorization")
 
         let (data, httpResponse) = try await networkService.performRequest(request)
-        try handleHTTPError(httpResponse)
+        try handleHTTPError(httpResponse, data: data)
 
         let response = try JSONDecoder().decode(StuStatusCertInfoResponse.self, from: data)
         logger.info("✅ Got \(response.result.hisStuStatusInfo.count, privacy: .public) semester records")
@@ -236,7 +236,7 @@ actor SISService {
         request.setValue("Bearer \(session.token)", forHTTPHeaderField: "Authorization")
 
         let (data, httpResponse) = try await networkService.performRequest(request)
-        try handleHTTPError(httpResponse)
+        try handleHTTPError(httpResponse, data: data)
 
         logger.info("✅ Certificate PDF downloaded (\(data.count, privacy: .public) bytes)")
         return data
@@ -265,7 +265,7 @@ actor SISService {
         request.setValue("Bearer \(session.token)", forHTTPHeaderField: "Authorization")
 
         let (data, httpResponse) = try await networkService.performRequest(request)
-        try handleHTTPError(httpResponse)
+        try handleHTTPError(httpResponse, data: data)
 
         let response = try JSONDecoder().decode(DigitalTranscriptListResponse.self, from: data)
         logger.info("✅ Got \(response.result.count, privacy: .public) digital transcript records")
@@ -296,7 +296,7 @@ actor SISService {
         request.setValue("Bearer \(session.token)", forHTTPHeaderField: "Authorization")
 
         let (data, httpResponse) = try await networkService.performRequest(request)
-        try handleHTTPError(httpResponse)
+        try handleHTTPError(httpResponse, data: data)
 
         logger.info("✅ Transcript PDF downloaded (\(data.count, privacy: .public) bytes)")
         return data
@@ -357,29 +357,43 @@ actor SISService {
         request.setValue("Bearer \(session.token)", forHTTPHeaderField: "Authorization")
         
         let (data, httpResponse) = try await networkService.performRequest(request)
-        try handleHTTPError(httpResponse)
+        try handleHTTPError(httpResponse, data: data)
         
         return try JSONDecoder().decode(AnnouncementResponse.self, from: data)
     }
     
     // MARK: - Error Handling
     
-    private func handleHTTPError(_ response: HTTPURLResponse) throws {
+    private func handleHTTPError(_ response: HTTPURLResponse, data: Data) throws {
         switch response.statusCode {
         case 200...299:
             return
         case 400:
-            throw SISError.badRequest("請求參數錯誤")
+            throw SISError.badRequest(Self.serverMessage(from: data) ?? "請求參數錯誤")
         case 401:
             throw SISError.unauthorized
         case 403:
             throw SISError.unauthorized
         case 404:
             throw SISError.notFound
+        case 429:
+            throw SISError.serverError("請求過於頻繁，請稍後再試")
         case 500...599:
-            throw SISError.serverError("伺服器內部錯誤")
+            throw SISError.serverError(Self.serverMessage(from: data) ?? "伺服器內部錯誤")
         default:
-            throw SISError.invalidResponse
+            throw SISError.serverError(Self.serverMessage(from: data) ?? "HTTP 錯誤：\(response.statusCode)")
         }
+    }
+
+    private nonisolated static func serverMessage(from data: Data) -> String? {
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            for key in ["message", "error", "detail", "msg"] {
+                if let value = json[key] as? String, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return value
+                }
+            }
+        }
+        let text = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return text.isEmpty || text.hasPrefix("<") ? nil : text
     }
 }

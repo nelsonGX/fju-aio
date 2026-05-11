@@ -14,10 +14,12 @@ struct CourseDetailSheet: View {
     @State private var enrollments: [Enrollment] = []
     @State private var avatars: [String: String] = [:]
     @State private var enrollmentsLoading = false
+    @State private var enrollmentsError: String?
     @State private var publicProfilesByEmpNo: [String: PublicProfile] = [:]
 
     @State private var myAttendanceRollcalls: [AttendanceRollcall] = []
     @State private var attendanceLoading = false
+    @State private var attendanceError: String?
 
     // Friend data for badge display
     private var friendStore: FriendStore { FriendStore.shared }
@@ -51,6 +53,11 @@ struct CourseDetailSheet: View {
 
                 // Enrollment preview bar — navigates to full list
                 Section {
+                    if let enrollmentsError {
+                        Label(enrollmentsError, systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
                     NavigationLink {
                         EnrollmentListView(
                             enrollments: enrollments,
@@ -82,6 +89,11 @@ struct CourseDetailSheet: View {
 
                 // My attendance
                 Section {
+                    if let attendanceError {
+                        Label(attendanceError, systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
                     NavigationLink {
                         MyAttendanceDetailView(rollcalls: myAttendanceRollcalls, courseName: course.name)
                     } label: {
@@ -199,7 +211,7 @@ struct CourseDetailSheet: View {
                 }
             }
             .listStyle(.insetGrouped)
-            .navigationTitle("(course.name)")
+            .navigationTitle(course.name)
             .navigationBarTitleDisplayMode(.inline)
             .task {
                 await loadEnrollments()
@@ -226,6 +238,7 @@ struct CourseDetailSheet: View {
         }
 
         enrollmentsLoading = !hasCachedEnrollments
+        enrollmentsError = nil
         do {
             let (list, avatarMap) = try await TronClassAPIService.shared.getEnrollments(courseCode: course.code)
             enrollments = list
@@ -234,7 +247,7 @@ struct CourseDetailSheet: View {
             loadCachedPublicProfiles(for: list)
             await refreshPublicProfiles(for: list)
         } catch {
-            // Silently ignore — preview bar shows empty state
+            enrollmentsError = "無法載入修課名單：\(error.localizedDescription)"
         }
         enrollmentsLoading = false
     }
@@ -242,10 +255,11 @@ struct CourseDetailSheet: View {
     @MainActor
     private func loadMyAttendance() async {
         attendanceLoading = true
+        attendanceError = nil
         do {
             myAttendanceRollcalls = try await TronClassAPIService.shared.getMyAttendanceRollcalls(courseCode: course.code)
         } catch {
-            // Silently ignore — row shows empty state
+            attendanceError = "無法載入出缺席：\(error.localizedDescription)"
         }
         attendanceLoading = false
     }

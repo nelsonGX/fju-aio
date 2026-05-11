@@ -5,6 +5,7 @@ struct AttendanceView: View {
     @State private var records: [AttendanceRecord] = []
     @State private var isLoading = true
     @State private var selectedCourse = "全部"
+    @State private var loadError: String?
 
     private let semester = "113-2"
     private let cache = AppCache.shared
@@ -35,6 +36,14 @@ struct AttendanceView: View {
 
     var body: some View {
         List {
+            if let loadError {
+                Section {
+                    Label(loadError, systemImage: "exclamationmark.triangle.fill")
+                        .font(.subheadline)
+                        .foregroundStyle(.orange)
+                }
+            }
+
             // Summary card
             Section {
                 summaryCard
@@ -80,6 +89,7 @@ struct AttendanceView: View {
     }
 
     private func loadRecords(forceRefresh: Bool) async {
+        loadError = nil
         let cachedRecords = cache.getAttendance(semester: semester)
         if let cached = cachedRecords, (!forceRefresh || records.isEmpty) {
             records = cached
@@ -92,7 +102,9 @@ struct AttendanceView: View {
             let fetched = try await service.fetchAttendanceRecords(semester: semester)
             records = fetched
             cache.setAttendance(fetched, semester: semester)
-        } catch {}
+        } catch {
+            loadError = "載入出缺席失敗：\(error.localizedDescription)"
+        }
         isLoading = false
     }
 

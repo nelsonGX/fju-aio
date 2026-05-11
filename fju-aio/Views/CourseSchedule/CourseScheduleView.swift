@@ -16,6 +16,7 @@ struct CourseScheduleView: View {
     @State private var showFriendPicker = false
     @State private var showShareSheet = false
     @State private var visibleFriendIds: Set<String> = []
+    @State private var loadError: String?
     @AppStorage("courseSchedule.showSelfCourses") private var showSelfCourses = true
 
     private let periodHeight: CGFloat = 56
@@ -67,8 +68,20 @@ struct CourseScheduleView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView(.vertical, showsIndicators: false) {
-                    timetableGrid(screenWidth: min(geometry.size.width, AppTheme.readableContentMaxWidth))
-                        .frame(maxWidth: .infinity, alignment: .center)
+                    VStack(spacing: 12) {
+                        if let loadError {
+                            Label(loadError, systemImage: "exclamationmark.triangle.fill")
+                                .font(.subheadline)
+                                .foregroundStyle(.orange)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 10)
+                                .frame(maxWidth: min(geometry.size.width, AppTheme.readableContentMaxWidth), alignment: .leading)
+                                .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                        }
+
+                        timetableGrid(screenWidth: min(geometry.size.width, AppTheme.readableContentMaxWidth))
+                            .frame(maxWidth: .infinity, alignment: .center)
+                    }
                 }
                 .refreshable {
                     await loadSemesters(forceRefresh: true)
@@ -620,6 +633,7 @@ struct CourseScheduleView: View {
             }
         }
 
+        loadError = nil
         do {
             let semesters = try await service.fetchAvailableSemesters()
             logger.info("📅 loadSemesters fetched forceRefresh=\(forceRefresh, privacy: .public), semesters=\(semesters.description, privacy: .public)")
@@ -636,16 +650,25 @@ struct CourseScheduleView: View {
         } catch {
             if selectedSemester.isEmpty, let cached = cache.getSemesters()?.first {
                 selectedSemester = cached
-            } else if selectedSemester.isEmpty {
-                selectedSemester = "114-2"
             }
             restoreVisibleFriendIds()
-            await loadCourses(forceRefresh: false)
+            if selectedSemester.isEmpty {
+                courses = []
+                isLoading = false
+                loadError = "無法取得學期資料：\(error.localizedDescription)"
+            } else {
+                let semesterLoadError = "無法更新學期資料：\(error.localizedDescription)"
+                await loadCourses(forceRefresh: false)
+                if loadError == nil {
+                    loadError = semesterLoadError
+                }
+            }
         }
     }
 
     private func loadCourses(forceRefresh: Bool) async {
         guard !selectedSemester.isEmpty else { return }
+        loadError = nil
 
         // Serve from cache without showing spinner
         if !forceRefresh, let cached = cache.getCourses(semester: selectedSemester) {
@@ -670,6 +693,7 @@ struct CourseScheduleView: View {
                 courses = cached
                 WidgetDataWriter.shared.writeCourseData(courses: cached, friends: FriendStore.shared.friends)
             }
+            loadError = "載入課表失敗：\(error.localizedDescription)"
         }
         isLoading = false
         presentDeepLinkedCourseIfNeeded()

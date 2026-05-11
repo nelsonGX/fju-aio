@@ -55,6 +55,7 @@ enum AppCacheCleanupService {
         widgetDefaults.removePersistentDomain(forName: WidgetDataStore.appGroupID)
         widgetDefaults.removeObject(forKey: WidgetDataStore.courseDataKey)
         widgetDefaults.removeObject(forKey: WidgetDataStore.assignmentDataKey)
+        widgetDefaults.removeObject(forKey: WidgetDataStore.classroomDataKey)
 
         WidgetCenter.shared.reloadAllTimelines()
     }

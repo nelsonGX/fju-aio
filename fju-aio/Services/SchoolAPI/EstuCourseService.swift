@@ -90,7 +90,9 @@ actor EstuCourseService {
             logger.info("📄 Got switched semester HTML, length=\(html.count, privacy: .public)")
         }
         
-        let currentSemester = extractCurrentSemester(from: html) ?? "114-2"
+        guard let currentSemester = extractCurrentSemester(from: html) ?? semesterCode else {
+            throw EstuError.invalidResponse
+        }
         logger.info("📅 Current semester: \(currentSemester, privacy: .public)")
         
         let courses = try htmlParser.extractCourses(from: html, semester: currentSemester)

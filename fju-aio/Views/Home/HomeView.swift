@@ -14,6 +14,7 @@ struct HomeView: View {
     @State private var navigateToCampusMap = false
     @State private var bulletinNotifications: [TronClassNotification] = []
     @State private var selectedBulletin: TronClassNotification?
+    @State private var loadError: String?
     @AppStorage(EventKitSyncService.autoSyncCalendarKey) private var autoSyncCalendar = false
 
     private let cache = AppCache.shared
@@ -22,6 +23,16 @@ struct HomeView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 heroSection
+
+                if let loadError {
+                    Label(loadError, systemImage: "exclamationmark.triangle.fill")
+                        .font(.subheadline)
+                        .foregroundStyle(.orange)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                }
 
                 todayScheduleSection
 
@@ -451,6 +462,7 @@ struct HomeView: View {
     // MARK: - Data Loading
 
     private func loadTodayCourses(forceRefresh: Bool) async {
+        loadError = nil
         let showedCachedData = await loadCachedTodayCoursesIfAvailable()
         if !forceRefresh, showedCachedData {
             return
@@ -460,7 +472,9 @@ struct HomeView: View {
         do {
             try await syncStatus.withSync("正在載入課程…") {
                 let semesters = try await service.fetchAvailableSemesters()
-                let currentSemester = semesters.first ?? "114-2"
+                guard let currentSemester = semesters.first else {
+                    throw SISError.invalidResponse
+                }
                 let all = try await service.fetchCourses(semester: currentSemester)
                 let calendarEvents = (try? await service.fetchCalendarEvents(semester: currentSemester)) ?? []
 
@@ -475,7 +489,9 @@ struct HomeView: View {
                 scheduleCourseNotifications(for: all, calendarEvents: calendarEvents)
                 await autoSyncCalendarIfNeeded(calendarEvents)
             }
-        } catch {}
+        } catch {
+            loadError = "載入首頁資料失敗：\(error.localizedDescription)"
+        }
         isLoading = false
     }
 

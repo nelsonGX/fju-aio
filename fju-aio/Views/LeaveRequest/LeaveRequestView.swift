@@ -835,11 +835,15 @@ private struct LeaveApplyWizard: View {
         switch step {
         case 1: return true
         case 2:
+            let selectedSubtype = leaveSubtypes.first { $0.value == draft.refLeaveSn }
+            let hasRequiredFamilyFields = selectedSubtype?.requiresFamilyFields != true ||
+                (draft.famTypeNo != nil && draft.famLevelNo != nil)
             return !draft.beginDate.isEmpty &&
                    !draft.endDate.isEmpty &&
                    !draft.leaveReason.trimmingCharacters(in: .whitespaces).isEmpty &&
                    !draft.phoneNumber.trimmingCharacters(in: .whitespaces).isEmpty &&
-                   isValidEmail(draft.emailAccount)
+                   isValidEmail(draft.emailAccount) &&
+                   hasRequiredFamilyFields
         case 3: return true   // Can proceed even with no courses selected
         default: return true
         }
@@ -983,8 +987,8 @@ private struct LeaveApplyWizard: View {
             academicYears  = try await hyTask
             leaveSubtypes  = try await subtypeTask
             sections       = try await sectTask
-            famTypes       = (try? await famTypeTask) ?? []
-            famLevels      = (try? await famLevelTask) ?? []
+            famTypes = (try? await famTypeTask) ?? []
+            famLevels = (try? await famLevelTask) ?? []
 
             // Set defaults from fetched data
             if let firstHy = academicYears.first {
@@ -1179,6 +1183,8 @@ private struct Step2FormView: View {
     let famLevels: [FamLevelItem]
 
     @State private var showDocPicker = false
+    @State private var attachmentError: String?
+    private let maxAttachmentSize = 10 * 1024 * 1024
 
     // Helper: does the selected subtype require family relationship fields?
     private var isBereavementLeave: Bool {
@@ -1270,6 +1276,11 @@ private struct Step2FormView: View {
 
                 // Bereavement extra fields
                 if isBereavementLeave {
+                    if famTypes.isEmpty || famLevels.isEmpty {
+                        Label("親屬關係選項載入失敗，請返回後重試。", systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
                     HStack(spacing: 12) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("親屬關係類型").font(.caption).foregroundStyle(.secondary)
@@ -1294,6 +1305,7 @@ private struct Step2FormView: View {
                             .pickerStyle(.menu)
                         }
                     }
+                    .disabled(famTypes.isEmpty || famLevels.isEmpty)
                 }
             }
             .padding(.bottom, 16)
@@ -1430,11 +1442,25 @@ private struct Step2FormView: View {
             let accessing = url.startAccessingSecurityScopedResource()
             defer { if accessing { url.stopAccessingSecurityScopedResource() } }
             if let data = try? Data(contentsOf: url) {
+                guard data.count <= maxAttachmentSize else {
+                    attachmentError = "檔案大小不可超過 10 MB。"
+                    return
+                }
                 let ext = url.pathExtension.lowercased()
                 draft.proofFileData  = data
                 draft.proofFileExt   = ext.isEmpty ? "pdf" : ext
                 draft.proofFileName  = url.lastPathComponent
+            } else {
+                attachmentError = "無法讀取選取的檔案，請重新選擇。"
             }
+        }
+        .alert("附件無法加入", isPresented: Binding(
+            get: { attachmentError != nil },
+            set: { if !$0 { attachmentError = nil } }
+        )) {
+            Button("確定", role: .cancel) { attachmentError = nil }
+        } message: {
+            Text(attachmentError ?? "")
         }
     }
 

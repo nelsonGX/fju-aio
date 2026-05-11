@@ -7,6 +7,7 @@ struct AssignmentsView: View {
     @State private var isBulkAdding = false
     @State private var bulkAddResult: BulkAddResult?
     @State private var reminderAccessDenied = false
+    @State private var loadError: String?
     @AppStorage(EventKitSyncService.autoSyncTodoKey) private var autoSyncTodo = false
 
     private let cache = AppCache.shared
@@ -21,6 +22,14 @@ struct AssignmentsView: View {
 
     var body: some View {
         List {
+            if let loadError {
+                Section {
+                    Label(loadError, systemImage: "exclamationmark.triangle.fill")
+                        .font(.subheadline)
+                        .foregroundStyle(.orange)
+                }
+            }
+
             // Overdue warning
             if overdueCount > 0 {
                 Section {
@@ -128,6 +137,7 @@ struct AssignmentsView: View {
     }
 
     private func loadAssignments(forceRefresh: Bool) async {
+        loadError = nil
         let cachedAssignments = cache.getAssignments()
         if let cached = cachedAssignments, (!forceRefresh || assignments.isEmpty) {
             assignments = cached
@@ -144,7 +154,9 @@ struct AssignmentsView: View {
             cache.setAssignments(fetched)
             WidgetDataWriter.shared.writeAssignmentData(assignments: fetched)
             await autoSyncIfNeeded(fetched)
-        } catch {}
+        } catch {
+            loadError = "載入作業失敗：\(error.localizedDescription)"
+        }
         isLoading = false
     }
 

@@ -74,10 +74,16 @@ actor RollcallService {
         let (data, http) = try await networkService.performRequest(request, retryPolicy: .none)
 
         if http.statusCode == 401 || http.statusCode == 403 { throw RollcallError.sessionExpired }
-        guard http.statusCode == 200 else { return false }
+        guard http.statusCode == 200 else {
+            throw RollcallError.serverMessage(Self.rollcallFailureMessage(from: data) ?? "數字碼點名失敗")
+        }
 
         let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        return json?["status"] as? String == "on_call"
+        let status = json?["status"] as? String ?? ""
+        guard status == "on_call" else {
+            throw RollcallError.serverMessage(Self.rollcallFailureMessage(from: data) ?? "數字碼錯誤，請再試一次")
+        }
+        return true
     }
 
     // MARK: - Radar Check-In
@@ -106,11 +112,16 @@ actor RollcallService {
         let (data, http) = try await networkService.performRequest(request, retryPolicy: .none)
 
         if http.statusCode == 401 || http.statusCode == 403 { throw RollcallError.sessionExpired }
-        guard http.statusCode == 200 else { return false }
+        guard http.statusCode == 200 else {
+            throw RollcallError.serverMessage(Self.rollcallFailureMessage(from: data) ?? "雷達點名失敗")
+        }
 
         let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         let status = json?["status"] as? String ?? ""
-        return status == "on_call" || status == "late"
+        guard status == "on_call" || status == "late" else {
+            throw RollcallError.serverMessage(Self.rollcallFailureMessage(from: data) ?? "雷達點名失敗，可能不在教室範圍內")
+        }
+        return true
     }
 
     // MARK: - QR Check-In
@@ -131,11 +142,16 @@ actor RollcallService {
         let (responseData, http) = try await networkService.performRequest(request, retryPolicy: .none)
 
         if http.statusCode == 401 || http.statusCode == 403 { throw RollcallError.sessionExpired }
-        guard http.statusCode == 200 else { return false }
+        guard http.statusCode == 200 else {
+            throw RollcallError.serverMessage(Self.rollcallFailureMessage(from: responseData) ?? "QR Code 點名失敗")
+        }
 
         let json = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any]
         let status = json?["status"] as? String ?? ""
-        return status == "on_call" || status == "late"
+        guard status == "on_call" || status == "late" else {
+            throw RollcallError.serverMessage(Self.rollcallFailureMessage(from: responseData) ?? "QR Code 點名失敗，請再試一次")
+        }
+        return true
     }
 
     /// Parses the data payload from a QR code string.
@@ -150,6 +166,22 @@ actor RollcallService {
             }
         }
         throw RollcallError.invalidQRCode
+    }
+
+    private nonisolated static func rollcallFailureMessage(from data: Data) -> String? {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            let text = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return text.isEmpty ? nil : text
+        }
+        for key in ["message", "error", "detail", "msg"] {
+            if let value = json[key] as? String, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return value
+            }
+        }
+        if let status = json["status"] as? String, !status.isEmpty {
+            return "點名狀態：\(status)"
+        }
+        return nil
     }
 
     // MARK: - Helpers

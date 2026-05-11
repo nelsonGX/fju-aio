@@ -103,12 +103,14 @@ enum RollcallError: LocalizedError {
     case sessionExpired
     case wrongCode
     case invalidQRCode
+    case serverMessage(String)
 
     var errorDescription: String? {
         switch self {
         case .sessionExpired:  return "登入已過期，請重新登入"
         case .wrongCode:       return "數字碼錯誤，請再試一次"
         case .invalidQRCode:   return "無效的 QR Code，請重新掃描"
+        case .serverMessage(let message): return message
         }
     }
 }

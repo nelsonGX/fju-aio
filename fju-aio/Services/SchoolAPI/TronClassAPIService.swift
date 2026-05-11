@@ -83,7 +83,7 @@ actor TronClassAPIService {
 
         do {
             let (data, httpResponse) = try await networkService.performRequest(request)
-            try handleHTTPError(httpResponse)
+            try handleHTTPError(httpResponse, data: data)
             let response = try JSONDecoder().decode(TronClassNotificationsResponse.self, from: data)
             let bulletins = response.notifications.compactMap { $0.asBulletin }
             logger.info("✅ Fetched \(bulletins.count) bulletin notifications")
@@ -119,7 +119,7 @@ actor TronClassAPIService {
         
         do {
             let (data, httpResponse) = try await networkService.performRequest(request)
-            try handleHTTPError(httpResponse)
+            try handleHTTPError(httpResponse, data: data)
             
             let response = try JSONDecoder().decode(TodosResponse.self, from: data)
             logger.info("✅ Fetched \(response.todo_list.count) todos")
@@ -307,7 +307,7 @@ actor TronClassAPIService {
         request.httpBody = try JSONEncoder().encode(EnrollmentEnrollmentsRequest())
 
         let (data, httpResponse) = try await networkService.performRequest(request, retryPolicy: .idempotent())
-        try handleHTTPError(httpResponse)
+        try handleHTTPError(httpResponse, data: data)
 
         return try JSONDecoder().decode(EnrollmentsResponse.self, from: data).enrollments
     }
@@ -341,7 +341,7 @@ actor TronClassAPIService {
         request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) TronClass/common", forHTTPHeaderField: "User-Agent")
 
         let (data, httpResponse) = try await networkService.performRequest(request, retryPolicy: .idempotent())
-        try handleHTTPError(httpResponse)
+        try handleHTTPError(httpResponse, data: data)
 
         let avatars = try JSONDecoder().decode(AvatarsResponse.self, from: data).avatars
         return avatars.mapValues { Self.avatarURL($0, thumbnail: "64x64") }
@@ -381,7 +381,7 @@ actor TronClassAPIService {
         request.httpBody = try JSONEncoder().encode(TronClassMyCoursesRequest())
 
         let (data, httpResponse) = try await networkService.performRequest(request, retryPolicy: .idempotent())
-        try handleHTTPError(httpResponse)
+        try handleHTTPError(httpResponse, data: data)
 
         let courses = try JSONDecoder().decode(TronClassMyCoursesResponse.self, from: data).courses
         myCoursesCache = courses
@@ -401,7 +401,7 @@ actor TronClassAPIService {
         request.setValue("zh-TW,zh-Hant;q=0.9,en;q=0.8", forHTTPHeaderField: "Accept-Language")
 
         let (data, httpResponse) = try await networkService.performRequest(request, retryPolicy: .idempotent())
-        try handleHTTPError(httpResponse)
+        try handleHTTPError(httpResponse, data: data)
 
         let response = try JSONDecoder().decode(TronClassCourseOutlineResponse.self, from: data)
         guard let externalURL = response.external_url,
@@ -427,7 +427,7 @@ actor TronClassAPIService {
         request.httpMethod = "GET"
 
         let (data, httpResponse) = try await networkService.performRequest(request, retryPolicy: .idempotent())
-        try handleHTTPError(httpResponse)
+        try handleHTTPError(httpResponse, data: data)
 
         return try JSONDecoder().decode(OutlineAPIResponse<OutlineCourseInfoAndBook>.self, from: data).result
     }
@@ -441,7 +441,7 @@ actor TronClassAPIService {
         request.httpMethod = "GET"
 
         let (data, httpResponse) = try await networkService.performRequest(request, retryPolicy: .idempotent())
-        try handleHTTPError(httpResponse)
+        try handleHTTPError(httpResponse, data: data)
 
         return try JSONDecoder().decode(OutlineAPIResponse<OutlineCourseCP>.self, from: data).result
     }
@@ -529,16 +529,32 @@ actor TronClassAPIService {
     
     // MARK: - Error Handling
     
-    private func handleHTTPError(_ response: HTTPURLResponse) throws {
+    private func handleHTTPError(_ response: HTTPURLResponse, data: Data) throws {
         switch response.statusCode {
         case 200...299:
             return
-        case 401:
+        case 401, 403:
             logger.error("❌ Unauthorized (401)")
             throw TronClassAPIError.unauthorized
+        case 429:
+            throw TronClassAPIError.serverError("請求過於頻繁，請稍後再試")
+        case 500...599:
+            throw TronClassAPIError.serverError(Self.serverMessage(from: data) ?? "伺服器暫時無法使用")
         default:
             logger.error("❌ HTTP error: \(response.statusCode)")
-            throw TronClassAPIError.invalidResponse
+            throw TronClassAPIError.serverError(Self.serverMessage(from: data) ?? "HTTP 錯誤：\(response.statusCode)")
         }
+    }
+
+    private nonisolated static func serverMessage(from data: Data) -> String? {
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            for key in ["message", "error", "detail", "msg"] {
+                if let value = json[key] as? String, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return value
+                }
+            }
+        }
+        let text = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return text.isEmpty || text.hasPrefix("<") ? nil : text
     }
 }
