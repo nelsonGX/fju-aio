@@ -86,22 +86,12 @@ struct GradesView: View {
 
     private func loadData(forceRefresh: Bool) async {
         // Show cached data immediately if available
-        if !forceRefresh {
-            if semesters.isEmpty, let cached = cache.getSemesters() {
-                semesters = cached
-                if !cached.contains(selectedSemester), let first = cached.first {
-                    selectedSemester = first
-                }
-            }
-            if !selectedSemester.isEmpty, let cachedGrades = cache.getGrades(semester: selectedSemester) {
-                grades = cachedGrades
-                gpaSummary = cache.getGPASummary(semester: selectedSemester)
-                isLoading = false
-                return
-            }
+        let showedCachedData = loadCachedDataIfAvailable()
+        if !forceRefresh, showedCachedData {
+            return
         }
 
-        isLoading = true
+        isLoading = !showedCachedData
         do {
             try await syncStatus.withSync("正在載入成績…") {
                 let newSemesters = try await service.fetchAvailableSemesters()
@@ -115,9 +105,11 @@ struct GradesView: View {
                 }
 
                 guard !semesterToLoad.isEmpty else {
-                    semesters = []
-                    grades = []
-                    gpaSummary = nil
+                    if !showedCachedData {
+                        semesters = []
+                        grades = []
+                        gpaSummary = nil
+                    }
                     cache.setSemesters([])
                     return
                 }
@@ -137,7 +129,29 @@ struct GradesView: View {
                 cache.setGrades(newGrades, semester: semesterToLoad)
                 cache.setGPASummary(newSummary, semester: semesterToLoad)
             }
-        } catch {}
+        }
+        catch {}
         isLoading = false
+    }
+
+    private func loadCachedDataIfAvailable() -> Bool {
+        var didLoad = false
+
+        if semesters.isEmpty, let cached = cache.getSemesters() {
+            semesters = cached
+            if !cached.contains(selectedSemester), let first = cached.first {
+                selectedSemester = first
+            }
+            didLoad = true
+        }
+
+        if !selectedSemester.isEmpty, let cachedGrades = cache.getGrades(semester: selectedSemester) {
+            grades = cachedGrades
+            gpaSummary = cache.getGPASummary(semester: selectedSemester)
+            isLoading = false
+            didLoad = true
+        }
+
+        return didLoad
     }
 }

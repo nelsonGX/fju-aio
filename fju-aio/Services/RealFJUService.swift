@@ -5,69 +5,75 @@ final class RealFJUService: FJUServiceProtocol, @unchecked Sendable {
     private let sisService = SISService.shared
     private let sisAuthService = SISAuthService.shared
     private let estuCourseService = EstuCourseService.shared
+    private let networkService = NetworkService.shared
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "RealFJUService")
     
     // MARK: - Course Schedule
     
     func fetchCourses(semester: String) async throws -> [Course] {
-        logger.info("📚 Fetching courses from ESTU for semester: \(semester)")
-        
-        // Use ESTU service instead of SIS
-        return try await estuCourseService.fetchCourses(semester: semester)
+        try await RequestCoalescer.shared.run(key: "courses.\(semester)") {
+            self.logger.info("📚 Fetching courses from ESTU for semester: \(semester)")
+            return try await self.estuCourseService.fetchCourses(semester: semester)
+        }
     }
     
     // MARK: - Grades
     
     func fetchGrades(semester: String) async throws -> [Grade] {
-        logger.info("📊 Fetching grades for semester: \(semester)")
-        
-        let parts = semester.split(separator: "-")
-        guard parts.count == 2,
-              let academicYear = parts.first.map(String.init),
-              let semesterNum = Int(String(parts.last ?? "")) else {
-            throw SISError.badRequest("Invalid semester format")
-        }
-        
-        let scoreResponse = try await sisService.queryScores(academicYear: academicYear, semester: semesterNum)
-        
-        return scoreResponse.courses.map { course in
-            Grade(
-                id: course.courseId,
-                courseName: course.courseName,
-                courseCode: course.courseId,
-                credits: course.credits,
-                score: course.score,
-                semester: semester,
-                letterGrade: course.grade
-            )
+        try await RequestCoalescer.shared.run(key: "grades.\(semester)") {
+            self.logger.info("📊 Fetching grades for semester: \(semester)")
+
+            let parts = semester.split(separator: "-")
+            guard parts.count == 2,
+                  let academicYear = parts.first.map(String.init),
+                  let semesterNum = Int(String(parts.last ?? "")) else {
+                throw SISError.badRequest("Invalid semester format")
+            }
+
+            let scoreResponse = try await self.sisService.queryScores(academicYear: academicYear, semester: semesterNum)
+
+            return scoreResponse.courses.map { course in
+                Grade(
+                    id: course.courseId,
+                    courseName: course.courseName,
+                    courseCode: course.courseId,
+                    credits: course.credits,
+                    score: course.score,
+                    semester: semester,
+                    letterGrade: course.grade
+                )
+            }
         }
     }
     
     func fetchGPASummary(semester: String) async throws -> GPASummary {
-        logger.info("📈 Fetching GPA summary for semester: \(semester)")
-        
-        let parts = semester.split(separator: "-")
-        guard parts.count == 2,
-              let academicYear = parts.first.map(String.init),
-              let semesterNum = Int(String(parts.last ?? "")) else {
-            throw SISError.badRequest("Invalid semester format")
+        try await RequestCoalescer.shared.run(key: "gpa.\(semester)") {
+            self.logger.info("📈 Fetching GPA summary for semester: \(semester)")
+
+            let parts = semester.split(separator: "-")
+            guard parts.count == 2,
+                  let academicYear = parts.first.map(String.init),
+                  let semesterNum = Int(String(parts.last ?? "")) else {
+                throw SISError.badRequest("Invalid semester format")
+            }
+
+            let scoreResponse = try await self.sisService.queryScores(academicYear: academicYear, semester: semesterNum)
+
+            return GPASummary(
+                semesterGPA: scoreResponse.semesterGPA,
+                cumulativeGPA: scoreResponse.semesterGPA,
+                totalCreditsEarned: scoreResponse.earnedCredits,
+                totalCreditsAttempted: scoreResponse.totalCredits,
+                semester: semester
+            )
         }
-        
-        let scoreResponse = try await sisService.queryScores(academicYear: academicYear, semester: semesterNum)
-        
-        return GPASummary(
-            semesterGPA: scoreResponse.semesterGPA,
-            cumulativeGPA: scoreResponse.semesterGPA,
-            totalCreditsEarned: scoreResponse.earnedCredits,
-            totalCreditsAttempted: scoreResponse.totalCredits,
-            semester: semester
-        )
     }
     
     func fetchAvailableSemesters() async throws -> [String] {
-        logger.info("📅 Fetching available semesters from ESTU")
-        
-        return try await estuCourseService.fetchAvailableSemesters()
+        try await RequestCoalescer.shared.run(key: "semesters") {
+            self.logger.info("📅 Fetching available semesters from ESTU")
+            return try await self.estuCourseService.fetchAvailableSemesters()
+        }
     }
     
     // MARK: - Quick Links
@@ -142,12 +148,12 @@ final class RealFJUService: FJUServiceProtocol, @unchecked Sendable {
     // MARK: - Calendar
     
     func fetchCalendarEvents(semester: String) async throws -> [CalendarEvent] {
-        logger.info("📅 Fetching calendar events for semester: \(semester)")
-        
-        let icsEvents = try await fetchICSCalendarEvents()
-        
-        logger.info("✅ Fetched \(icsEvents.count) ICS events")
-        return icsEvents
+        try await RequestCoalescer.shared.run(key: "calendar.\(semester)") {
+            self.logger.info("📅 Fetching calendar events for semester: \(semester)")
+            let icsEvents = try await self.fetchICSCalendarEvents()
+            self.logger.info("✅ Fetched \(icsEvents.count) ICS events")
+            return icsEvents
+        }
     }
     
     private func fetchICSCalendarEvents() async throws -> [CalendarEvent] {
@@ -162,7 +168,7 @@ final class RealFJUService: FJUServiceProtocol, @unchecked Sendable {
         request.httpMethod = "GET"
         request.setValue("text/calendar", forHTTPHeaderField: "Accept")
         
-        let (data, _) = try await URLSession.shared.data(for: request)
+        let (data, _) = try await networkService.performRequest(request, retryPolicy: .idempotent(maxRetries: 3))
         
         guard let icsContent = String(data: data, encoding: .utf8) else {
             throw SISError.invalidResponse
@@ -292,18 +298,20 @@ final class RealFJUService: FJUServiceProtocol, @unchecked Sendable {
     // MARK: - Assignments
     
     func fetchAssignments() async throws -> [Assignment] {
-        logger.info("📝 Fetching assignments from TronClass todos")
-        let todos = try await TronClassAPIService.shared.getTodos()
-        return todos.compactMap { todo in
-            guard let dueDate = todo.endDate else { return nil }
-            return Assignment(
-                id: "\(todo.id)",
-                title: todo.title,
-                courseName: todo.course_name,
-                dueDate: dueDate,
-                description: nil,
-                source: .tronclass
-            )
+        try await RequestCoalescer.shared.run(key: "assignments") {
+            self.logger.info("📝 Fetching assignments from TronClass todos")
+            let todos = try await TronClassAPIService.shared.getTodos()
+            return todos.compactMap { todo in
+                guard let dueDate = todo.endDate else { return nil }
+                return Assignment(
+                    id: "\(todo.id)",
+                    title: todo.title,
+                    courseName: todo.course_name,
+                    dueDate: dueDate,
+                    description: nil,
+                    source: .tronclass
+                )
+            }
         }
     }
     

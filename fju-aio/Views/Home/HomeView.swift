@@ -451,24 +451,12 @@ struct HomeView: View {
     // MARK: - Data Loading
 
     private func loadTodayCourses(forceRefresh: Bool) async {
-        if !forceRefresh {
-            let todayKey = todayDayString()
-            if let cachedSemesters = cache.getSemesters(),
-               let currentSemester = cachedSemesters.first,
-               let cachedCourses = cache.getCourses(semester: currentSemester) {
-                let cachedCalendarEvents = cache.getCalendarEvents(semester: currentSemester) ?? []
-                todayCourses = cachedCourses
-                    .filter { $0.dayOfWeek == todayKey }
-                    .sorted { $0.startPeriod < $1.startPeriod }
-                isLoading = false
-                WidgetDataWriter.shared.writeCourseData(courses: cachedCourses, friends: FriendStore.shared.friends)
-                scheduleCourseNotifications(for: cachedCourses, calendarEvents: cachedCalendarEvents)
-                await autoSyncCalendarIfNeeded(cachedCalendarEvents)
-                return
-            }
+        let showedCachedData = await loadCachedTodayCoursesIfAvailable()
+        if !forceRefresh, showedCachedData {
+            return
         }
 
-        isLoading = true
+        isLoading = !showedCachedData
         do {
             try await syncStatus.withSync("正在載入課程…") {
                 let semesters = try await service.fetchAvailableSemesters()
@@ -489,6 +477,25 @@ struct HomeView: View {
             }
         } catch {}
         isLoading = false
+    }
+
+    private func loadCachedTodayCoursesIfAvailable() async -> Bool {
+        let todayKey = todayDayString()
+        guard let cachedSemesters = cache.getSemesters(),
+              let currentSemester = cachedSemesters.first,
+              let cachedCourses = cache.getCourses(semester: currentSemester) else {
+            return false
+        }
+
+        let cachedCalendarEvents = cache.getCalendarEvents(semester: currentSemester) ?? []
+        todayCourses = cachedCourses
+            .filter { $0.dayOfWeek == todayKey }
+            .sorted { $0.startPeriod < $1.startPeriod }
+        isLoading = false
+        WidgetDataWriter.shared.writeCourseData(courses: cachedCourses, friends: FriendStore.shared.friends)
+        scheduleCourseNotifications(for: cachedCourses, calendarEvents: cachedCalendarEvents)
+        await autoSyncCalendarIfNeeded(cachedCalendarEvents)
+        return true
     }
 
     private func autoSyncCalendarIfNeeded(_ events: [CalendarEvent]) async {

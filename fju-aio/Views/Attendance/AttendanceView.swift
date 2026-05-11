@@ -80,13 +80,14 @@ struct AttendanceView: View {
     }
 
     private func loadRecords(forceRefresh: Bool) async {
-        if !forceRefresh, let cached = cache.getAttendance(semester: semester) {
+        let cachedRecords = cache.getAttendance(semester: semester)
+        if let cached = cachedRecords, (!forceRefresh || records.isEmpty) {
             records = cached
             isLoading = false
-            return
+            if !forceRefresh { return }
         }
 
-        isLoading = true
+        isLoading = records.isEmpty
         do {
             let fetched = try await service.fetchAttendanceRecords(semester: semester)
             records = fetched

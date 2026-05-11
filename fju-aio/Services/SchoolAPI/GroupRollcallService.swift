@@ -15,6 +15,7 @@ actor GroupRollcallService {
     static let shared = GroupRollcallService()
 
     private let baseURL = "https://elearn2.fju.edu.tw"
+    private let networkService = NetworkService.shared
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "GroupRollcall")
 
     private init() {}
@@ -38,8 +39,8 @@ actor GroupRollcallService {
         let encodedPass = password.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         tgtReq.httpBody = "username=\(encodedUser)&password=\(encodedPass)".data(using: .utf8)
 
-        let (_, tgtResp) = try await URLSession.shared.data(for: tgtReq)
-        guard let tgtHTTP = tgtResp as? HTTPURLResponse, tgtHTTP.statusCode == 201,
+        let (_, tgtHTTP) = try await networkService.performRequest(tgtReq, retryPolicy: .none)
+        guard tgtHTTP.statusCode == 201,
               let location = tgtHTTP.value(forHTTPHeaderField: "Location"),
               let tgt = location.components(separatedBy: "/").last else {
             throw AuthenticationError.invalidCredentials
@@ -54,8 +55,8 @@ actor GroupRollcallService {
         stReq.setValue("TronClass/2.14.5 (iPhone; iOS 18.2; Scale/3.00)", forHTTPHeaderField: "User-Agent")
         stReq.httpBody = "service=https://elearn2.fju.edu.tw/api/cas-login".data(using: .utf8)
 
-        let (stData, stResp) = try await URLSession.shared.data(for: stReq)
-        guard let stHTTP = stResp as? HTTPURLResponse, stHTTP.statusCode == 200,
+        let (stData, stHTTP) = try await networkService.performRequest(stReq, retryPolicy: .none)
+        guard stHTTP.statusCode == 200,
               let serviceTicket = String(data: stData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) else {
             throw AuthenticationError.serviceTicketInvalid
         }
@@ -73,8 +74,8 @@ actor GroupRollcallService {
             forHTTPHeaderField: "User-Agent"
         )
 
-        let (sessData, sessResp) = try await URLSession.shared.data(for: sessionReq)
-        guard let sessHTTP = sessResp as? HTTPURLResponse, sessHTTP.statusCode == 200,
+        let (sessData, sessHTTP) = try await networkService.performRequest(sessionReq, retryPolicy: .none)
+        guard sessHTTP.statusCode == 200,
               let sessionId = sessHTTP.value(forHTTPHeaderField: "X-SESSION-ID") else {
             throw AuthenticationError.missingSessionId
         }
@@ -111,8 +112,7 @@ actor GroupRollcallService {
         let body: [String: String] = ["deviceId": generateDeviceId(), "numberCode": numberCode]
         request.httpBody = try JSONEncoder().encode(body)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse else { return false }
+        let (data, http) = try await networkService.performRequest(request, retryPolicy: .none)
         if http.statusCode == 401 || http.statusCode == 403 { throw RollcallError.sessionExpired }
         guard http.statusCode == 200 else { return false }
 
@@ -148,8 +148,7 @@ actor GroupRollcallService {
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse else { return false }
+        let (data, http) = try await networkService.performRequest(request, retryPolicy: .none)
         if http.statusCode == 401 || http.statusCode == 403 { throw RollcallError.sessionExpired }
         guard http.statusCode == 200 else { return false }
 
@@ -178,8 +177,7 @@ actor GroupRollcallService {
         let body: [String: String] = ["data": data, "deviceId": generateDeviceId()]
         request.httpBody = try JSONEncoder().encode(body)
 
-        let (responseData, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse else { return false }
+        let (responseData, http) = try await networkService.performRequest(request, retryPolicy: .none)
         if http.statusCode == 401 || http.statusCode == 403 { throw RollcallError.sessionExpired }
         guard http.statusCode == 200 else { return false }
 
@@ -209,8 +207,7 @@ actor GroupRollcallService {
         request.httpMethod = "GET"
         applyHeaders(&request, sessionId: session.sessionId)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse else { throw RollcallError.sessionExpired }
+        let (data, http) = try await networkService.performRequest(request, retryPolicy: .idempotent())
         if http.statusCode == 401 || http.statusCode == 403 { throw RollcallError.sessionExpired }
 
         let decoded = try JSONDecoder().decode(RollcallsResponse.self, from: data)

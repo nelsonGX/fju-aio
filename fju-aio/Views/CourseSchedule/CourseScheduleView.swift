@@ -634,11 +634,13 @@ struct CourseScheduleView: View {
             restoreVisibleFriendIds()
             await loadCourses(forceRefresh: forceRefresh)
         } catch {
-            if selectedSemester.isEmpty {
+            if selectedSemester.isEmpty, let cached = cache.getSemesters()?.first {
+                selectedSemester = cached
+            } else if selectedSemester.isEmpty {
                 selectedSemester = "114-2"
             }
             restoreVisibleFriendIds()
-            await loadCourses(forceRefresh: forceRefresh)
+            await loadCourses(forceRefresh: false)
         }
     }
 
@@ -664,7 +666,10 @@ struct CourseScheduleView: View {
                 WidgetDataWriter.shared.writeCourseData(courses: fetched, friends: FriendStore.shared.friends)
             }
         } catch {
-            courses = []
+            if courses.isEmpty, let cached = cache.getCourses(semester: selectedSemester) {
+                courses = cached
+                WidgetDataWriter.shared.writeCourseData(courses: cached, friends: FriendStore.shared.friends)
+            }
         }
         isLoading = false
         presentDeepLinkedCourseIfNeeded()

@@ -5,6 +5,7 @@ actor ClassroomScheduleService {
     static let shared = ClassroomScheduleService()
 
     private let remoteURL = URL(string: "https://github.com/FJU-Devs/fju-classroom-schedule/raw/refs/heads/main/fju_day_courses.json")!
+    private let networkService = NetworkService.shared
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "ClassroomSchedule")
     private var cachedIndex: ClassroomScheduleIndex?
 
@@ -44,9 +45,8 @@ actor ClassroomScheduleService {
         request.timeoutInterval = 45
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200..<300).contains(httpResponse.statusCode) else {
+        let (data, httpResponse) = try await networkService.performRequest(request, retryPolicy: .idempotent(maxRetries: 3))
+        guard (200..<300).contains(httpResponse.statusCode) else {
             throw URLError(.badServerResponse)
         }
         return data

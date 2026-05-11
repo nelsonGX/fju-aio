@@ -1,6 +1,6 @@
 import Foundation
 
-struct Grade: Identifiable {
+struct Grade: Identifiable, Codable, Sendable {
     let id: String
     let courseName: String
     let courseCode: String
@@ -10,7 +10,7 @@ struct Grade: Identifiable {
     let letterGrade: String?
 }
 
-struct GPASummary {
+struct GPASummary: Codable, Sendable {
     let semesterGPA: Double
     let cumulativeGPA: Double
     let totalCreditsEarned: Int

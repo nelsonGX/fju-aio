@@ -1,6 +1,6 @@
 import Foundation
 
-struct CalendarEvent: Identifiable {
+struct CalendarEvent: Identifiable, Codable, Sendable {
     let id: String
     let title: String
     let startDate: Date
@@ -8,7 +8,7 @@ struct CalendarEvent: Identifiable {
     let category: EventCategory
     let description: String?
 
-    enum EventCategory: String, CaseIterable {
+    enum EventCategory: String, CaseIterable, Codable, Sendable {
         case exam = "考試"
         case holiday = "假日"
         case registration = "註冊"

@@ -12,6 +12,7 @@ private let liveActivityDismissalDelay: TimeInterval = 30
 @Observable
 final class CourseNotificationManager {
     static let shared = CourseNotificationManager()
+    private let networkService = NetworkService.shared
 
     private init() {
         // Load persisted values into stored properties so @Observable can track them
@@ -1156,11 +1157,7 @@ final class CourseNotificationManager {
         request.httpMethod = "DELETE"
         applyServerAuth(to: &request)
         do {
-            let (responseData, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse else {
-                print("[CourseNotification] ⚠️ 登出 activity 收到非 HTTP 回應: \(activityId)")
-                return
-            }
+            let (responseData, http) = try await networkService.performRequest(request, retryPolicy: .none)
 
             if (200..<300).contains(http.statusCode) || http.statusCode == 404 {
                 print("[CourseNotification] ✅ 已向伺服器登出 activity: \(activityId)")
@@ -1192,11 +1189,7 @@ final class CourseNotificationManager {
         request.httpBody = data
 
         do {
-            let (responseData, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse else {
-                print("[CourseNotification] ⚠️ POST 收到非 HTTP 回應 (\(urlString))")
-                return false
-            }
+            let (responseData, http) = try await networkService.performRequest(request, retryPolicy: .none)
 
             guard (200..<300).contains(http.statusCode) else {
                 let message = serverErrorMessage(from: responseData)

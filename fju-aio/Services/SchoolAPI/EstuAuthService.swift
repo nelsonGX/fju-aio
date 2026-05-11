@@ -10,6 +10,7 @@ actor EstuAuthService {
     private let credentialStore = CredentialStore.shared
     private let keychain = KeychainManager.shared
     private let htmlParser = HTMLParser.shared
+    private let networkService = NetworkService.shared
     
     /// Direct reference to cookie storage (URLSessionConfiguration is copied, so we keep our own ref)
     private let cookieStorage = HTTPCookieStorage.shared
@@ -115,13 +116,11 @@ actor EstuAuthService {
         request.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36", forHTTPHeaderField: "User-Agent")
         request.setValue("zh-TW,zh;q=0.9,en;q=0.8", forHTTPHeaderField: "Accept-Language")
         
-        logger.logRequest(request)
-        let (data, response) = try await urlSession.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw EstuError.invalidResponse
-        }
-        logger.logResponse(httpResponse, data: data, error: nil)
+        let (data, _) = try await networkService.performRequest(
+            request,
+            session: urlSession,
+            retryPolicy: .idempotent()
+        )
         
         guard let html = String(data: data, encoding: .utf8) else {
             throw EstuError.invalidResponse
@@ -155,13 +154,11 @@ actor EstuAuthService {
         
         request.httpBody = formData.percentEncoded()
         
-        logger.logRequest(request)
-        let (data, response) = try await urlSession.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw EstuError.invalidResponse
-        }
-        logger.logResponse(httpResponse, data: data, error: nil)
+        let (data, httpResponse) = try await networkService.performRequest(
+            request,
+            session: urlSession,
+            retryPolicy: .none
+        )
         
         guard httpResponse.statusCode == 200 else {
             throw EstuError.invalidResponse

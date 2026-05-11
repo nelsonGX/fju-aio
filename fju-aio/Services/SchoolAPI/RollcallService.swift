@@ -7,6 +7,7 @@ actor RollcallService {
 
     private let baseURL = "https://elearn2.fju.edu.tw"
     private let authService = TronClassAuthService.shared
+    private let networkService = NetworkService.shared
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "Rollcall")
 
     private init() {}
@@ -21,8 +22,7 @@ actor RollcallService {
         request.httpMethod = "GET"
         Self.applyHeaders(&request, sessionId: session.sessionId)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse else { throw RollcallError.sessionExpired }
+        let (data, http) = try await networkService.performRequest(request, retryPolicy: .idempotent())
         if http.statusCode == 401 || http.statusCode == 403 { throw RollcallError.sessionExpired }
 
         let decoded = try JSONDecoder().decode(AttendanceRollcallsResponse.self, from: data)
@@ -42,8 +42,7 @@ actor RollcallService {
         request.httpMethod = "GET"
         Self.applyHeaders(&request, sessionId: session.sessionId)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse else { throw RollcallError.sessionExpired }
+        let (data, http) = try await networkService.performRequest(request, retryPolicy: .idempotent())
 
         if http.statusCode == 401 || http.statusCode == 403 { throw RollcallError.sessionExpired }
 
@@ -72,8 +71,7 @@ actor RollcallService {
         let body: [String: String] = ["deviceId": Self.generateDeviceId(), "numberCode": code]
         request.httpBody = try JSONEncoder().encode(body)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse else { return false }
+        let (data, http) = try await networkService.performRequest(request, retryPolicy: .none)
 
         if http.statusCode == 401 || http.statusCode == 403 { throw RollcallError.sessionExpired }
         guard http.statusCode == 200 else { return false }
@@ -105,8 +103,7 @@ actor RollcallService {
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body.compactMapValues { $0 })
 
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse else { return false }
+        let (data, http) = try await networkService.performRequest(request, retryPolicy: .none)
 
         if http.statusCode == 401 || http.statusCode == 403 { throw RollcallError.sessionExpired }
         guard http.statusCode == 200 else { return false }
@@ -131,8 +128,7 @@ actor RollcallService {
         let body: [String: String] = ["data": data, "deviceId": Self.generateDeviceId()]
         request.httpBody = try JSONEncoder().encode(body)
 
-        let (responseData, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse else { return false }
+        let (responseData, http) = try await networkService.performRequest(request, retryPolicy: .none)
 
         if http.statusCode == 401 || http.statusCode == 403 { throw RollcallError.sessionExpired }
         guard http.statusCode == 200 else { return false }

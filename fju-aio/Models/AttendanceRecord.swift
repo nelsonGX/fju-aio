@@ -1,6 +1,6 @@
 import Foundation
 
-struct AttendanceRecord: Identifiable {
+struct AttendanceRecord: Identifiable, Codable, Sendable {
     let id: String
     let courseName: String
     let date: Date
@@ -9,7 +9,7 @@ struct AttendanceRecord: Identifiable {
     let rollcallTitle: String
     let source: String  // "qr", "radar", "number"
 
-    enum AttendanceStatus: String, CaseIterable {
+    enum AttendanceStatus: String, CaseIterable, Codable, Sendable {
         case present = "出席"
         case absent = "缺席"
         case late = "遲到"

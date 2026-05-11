@@ -128,15 +128,16 @@ struct AssignmentsView: View {
     }
 
     private func loadAssignments(forceRefresh: Bool) async {
-        if !forceRefresh, let cached = cache.getAssignments() {
+        let cachedAssignments = cache.getAssignments()
+        if let cached = cachedAssignments, (!forceRefresh || assignments.isEmpty) {
             assignments = cached
             isLoading = false
             WidgetDataWriter.shared.writeAssignmentData(assignments: cached)
             await autoSyncIfNeeded(cached)
-            return
+            if !forceRefresh { return }
         }
 
-        isLoading = true
+        isLoading = assignments.isEmpty
         do {
             let fetched = try await service.fetchAssignments()
             assignments = fetched

@@ -179,14 +179,15 @@ struct SemesterCalendarView: View {
     // MARK: - Load
 
     private func loadEvents(forceRefresh: Bool) async {
-        if !forceRefresh, let cached = cache.getCalendarEvents(semester: semester) {
+        let cachedEvents = cache.getCalendarEvents(semester: semester)
+        if let cached = cachedEvents, (!forceRefresh || events.isEmpty) {
             events = cached
             isLoading = false
             await autoSyncIfNeeded(cached)
-            return
+            if !forceRefresh { return }
         }
 
-        isLoading = true
+        isLoading = events.isEmpty
         errorMessage = nil
 
         do {
@@ -197,7 +198,9 @@ struct SemesterCalendarView: View {
                 await autoSyncIfNeeded(fetched)
             }
         } catch {
-            errorMessage = "載入失敗: \(error.localizedDescription)"
+            if events.isEmpty {
+                errorMessage = "載入失敗: \(error.localizedDescription)"
+            }
         }
 
         isLoading = false

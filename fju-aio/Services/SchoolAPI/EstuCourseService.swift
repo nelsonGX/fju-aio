@@ -9,6 +9,7 @@ actor EstuCourseService {
     private let authService = EstuAuthService.shared
     private let htmlParser = HTMLParser.shared
     private let tronClassAPIService = TronClassAPIService.shared
+    private let networkService = NetworkService.shared
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "EstuCourse")
     
     private init() {}
@@ -169,7 +170,11 @@ actor EstuCourseService {
         // Use the auth service's URLSession which has the cookies
         let urlSession = await authService.getURLSession()
         
-        let (data, _) = try await urlSession.data(for: request)
+        let (data, _) = try await networkService.performRequest(
+            request,
+            session: urlSession,
+            retryPolicy: .none
+        )
         
         guard let html = String(data: data, encoding: .utf8) else {
             throw EstuError.invalidResponse

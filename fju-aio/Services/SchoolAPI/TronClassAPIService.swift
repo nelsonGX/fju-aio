@@ -306,7 +306,7 @@ actor TronClassAPIService {
         request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) TronClass/common", forHTTPHeaderField: "User-Agent")
         request.httpBody = try JSONEncoder().encode(EnrollmentEnrollmentsRequest())
 
-        let (data, httpResponse) = try await networkService.performRequest(request)
+        let (data, httpResponse) = try await networkService.performRequest(request, retryPolicy: .idempotent())
         try handleHTTPError(httpResponse)
 
         return try JSONDecoder().decode(EnrollmentsResponse.self, from: data).enrollments
@@ -340,7 +340,7 @@ actor TronClassAPIService {
         request.setValue("zh-TW,zh-Hant;q=0.9,en;q=0.8", forHTTPHeaderField: "Accept-Language")
         request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) TronClass/common", forHTTPHeaderField: "User-Agent")
 
-        let (data, httpResponse) = try await networkService.performRequest(request)
+        let (data, httpResponse) = try await networkService.performRequest(request, retryPolicy: .idempotent())
         try handleHTTPError(httpResponse)
 
         let avatars = try JSONDecoder().decode(AvatarsResponse.self, from: data).avatars
@@ -380,7 +380,7 @@ actor TronClassAPIService {
         request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) TronClass/common", forHTTPHeaderField: "User-Agent")
         request.httpBody = try JSONEncoder().encode(TronClassMyCoursesRequest())
 
-        let (data, httpResponse) = try await networkService.performRequest(request)
+        let (data, httpResponse) = try await networkService.performRequest(request, retryPolicy: .idempotent())
         try handleHTTPError(httpResponse)
 
         let courses = try JSONDecoder().decode(TronClassMyCoursesResponse.self, from: data).courses
@@ -400,7 +400,7 @@ actor TronClassAPIService {
         request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
         request.setValue("zh-TW,zh-Hant;q=0.9,en;q=0.8", forHTTPHeaderField: "Accept-Language")
 
-        let (data, httpResponse) = try await networkService.performRequest(request)
+        let (data, httpResponse) = try await networkService.performRequest(request, retryPolicy: .idempotent())
         try handleHTTPError(httpResponse)
 
         let response = try JSONDecoder().decode(TronClassCourseOutlineResponse.self, from: data)
@@ -426,7 +426,7 @@ actor TronClassAPIService {
         var request = makeOutlineRequest(url: url)
         request.httpMethod = "GET"
 
-        let (data, httpResponse) = try await networkService.performRequest(request)
+        let (data, httpResponse) = try await networkService.performRequest(request, retryPolicy: .idempotent())
         try handleHTTPError(httpResponse)
 
         return try JSONDecoder().decode(OutlineAPIResponse<OutlineCourseInfoAndBook>.self, from: data).result
@@ -440,7 +440,7 @@ actor TronClassAPIService {
         var request = makeOutlineRequest(url: url)
         request.httpMethod = "GET"
 
-        let (data, httpResponse) = try await networkService.performRequest(request)
+        let (data, httpResponse) = try await networkService.performRequest(request, retryPolicy: .idempotent())
         try handleHTTPError(httpResponse)
 
         return try JSONDecoder().decode(OutlineAPIResponse<OutlineCourseCP>.self, from: data).result

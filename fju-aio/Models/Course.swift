@@ -1,6 +1,6 @@
 import Foundation
 
-nonisolated struct Course: Identifiable, Hashable, Sendable {
+nonisolated struct Course: Identifiable, Hashable, Sendable, Codable {
     let id: String
     let name: String
     let code: String
@@ -18,7 +18,7 @@ nonisolated struct Course: Identifiable, Hashable, Sendable {
     let outline: CourseOutlineDetails?
     let color: String // hex color for timetable display
     
-    enum CourseType: String, Sendable, Hashable {
+    enum CourseType: String, Sendable, Hashable, Codable {
         case required = "必"
         case elective = "選"
         case unknown = ""
@@ -121,7 +121,7 @@ nonisolated struct Course: Identifiable, Hashable, Sendable {
     }
 }
 
-nonisolated struct CourseOutlineDetails: Hashable, Sendable {
+nonisolated struct CourseOutlineDetails: Hashable, Sendable, Codable {
     let objective: String?
     let teachingMaterials: String?
     let textbook: String?
@@ -147,7 +147,7 @@ nonisolated struct CourseOutlineDetails: Hashable, Sendable {
     }
 }
 
-nonisolated struct WeeklyCoursePlan: Identifiable, Hashable, Sendable {
+nonisolated struct WeeklyCoursePlan: Identifiable, Hashable, Sendable, Codable {
     let week: Int
     let unit: String?
     let theme: String?

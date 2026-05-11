@@ -22,6 +22,7 @@ actor DormAuthService {
     private let apiBase = "https://api-dorm.fju.edu.tw/api"
     private let credentialStore = CredentialStore.shared
     private let keychain = KeychainManager.shared
+    private let networkService = NetworkService.shared
     private let sessionKey = "com.fju.dorm.session"
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "DormAuth")
 
@@ -67,11 +68,7 @@ actor DormAuthService {
         ]
         request.httpBody = try JSONEncoder().encode(body)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw DormAuthError.invalidResponse
-        }
+        let (data, httpResponse) = try await networkService.performRequest(request, retryPolicy: .none)
 
         guard httpResponse.statusCode == 200 else {
             logger.error("❌ Dorm login HTTP \(httpResponse.statusCode)")
