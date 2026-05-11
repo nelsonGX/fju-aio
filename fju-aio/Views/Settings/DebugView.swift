@@ -774,47 +774,19 @@ struct DebugView: View {
 struct CheckInTestView: View {
     @State private var selectedType: RollcallType = .number
     @State private var result: RollcallCheckInResult? = nil
+    @State private var friendResults: [String: FriendCheckInStatus] = [:]
     @State private var showManualEntry = false
     @State private var showQRScanner = false
+    @State private var simulateAlreadyCheckedIn = false
+    @State private var pendingManualFriends: [FriendRecord] = []
+    @State private var pendingQRFriends: [FriendRecord] = []
 
-    // Group rollcall test
-    @State private var groupEnabled = false
     @State private var credFriends: [FriendRecord] = []
-    @State private var selectedFriendIds: Set<String> = []
-    @State private var friendAuthState: [String: FriendAuthState] = [:]
-    @State private var isPreloadingSessions = false
 
     enum RollcallType: String, CaseIterable {
         case number = "數字碼"
         case radar  = "雷達"
         case qr     = "QR Code"
-    }
-
-    enum FriendAuthState {
-        case idle, loading, success(TronClassSession), failure(String)
-        var icon: String {
-            switch self {
-            case .idle:    return "circle"
-            case .loading: return ""
-            case .success: return "checkmark.circle.fill"
-            case .failure: return "xmark.circle.fill"
-            }
-        }
-        var color: Color {
-            switch self {
-            case .idle, .loading: return .secondary
-            case .success:        return .green
-            case .failure:        return .red
-            }
-        }
-        var label: String {
-            switch self {
-            case .idle:           return "待驗證"
-            case .loading:        return "登入中..."
-            case .success:        return "Session 已取得"
-            case .failure(let m): return m
-            }
-        }
     }
 
     private var mockRollcall: Rollcall {
@@ -828,7 +800,7 @@ struct CheckInTestView: View {
             is_radar: selectedType == .radar,
             is_qr: selectedType == .qr,
             is_expired: false,
-            status: "absent",
+            status: simulateAlreadyCheckedIn ? "on_call" : "absent",
             rollcall_time: "2026-04-27T06:00:00Z",
             title: "Debug 點名測試（\(selectedType.rawValue)）",
             created_by_name: "Debug Teacher",
@@ -853,165 +825,53 @@ struct CheckInTestView: View {
                 .pickerStyle(.segmented)
                 .onChange(of: selectedType) {
                     result = nil
-                    resetFriendAuth()
+                    friendResults = [:]
                 }
+            }
+
+            Section("狀態") {
+                Toggle("模擬自己已簽到", isOn: $simulateAlreadyCheckedIn)
+                    .onChange(of: simulateAlreadyCheckedIn) {
+                        result = nil
+                        friendResults = [:]
+                    }
             }
 
             Section("模擬點名") {
-                VStack(alignment: .leading, spacing: 10) {
-                    // Header
-                    HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(mockRollcall.course_title).font(.headline)
-                            Text(mockRollcall.title).font(.caption).foregroundStyle(.secondary)
-                            Text(mockRollcall.created_by_name ?? "").font(.caption).foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Text("進行中")
-                            .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 8).padding(.vertical, 4)
-                            .background(Color.blue.opacity(0.15))
-                            .foregroundStyle(.blue)
-                            .clipShape(Capsule())
+                RollcallRowView(
+                    rollcall: mockRollcall,
+                    result: result,
+                    friendResults: friendResults,
+                    proxyFriends: credFriends,
+                    onManualEntry: { friends in
+                        pendingManualFriends = friends
+                        showManualEntry = true
+                    },
+                    onRadarCheckIn: {
+                        simulateCheckin(includingFriends: [])
+                    },
+                    onQRCheckIn: {
+                        pendingQRFriends = []
+                        showQRScanner = true
+                    },
+                    onProxyRadarCheckIn: { friends in
+                        simulateCheckin(includingFriends: friends)
+                    },
+                    onProxyQRCheckin: { sessions in
+                        pendingQRFriends = sessions.map(\.0)
+                        showQRScanner = true
                     }
-
-                    HStack(spacing: 6) {
-                        Image(systemName: methodIcon).font(.caption)
-                        Text(mockRollcall.title).font(.caption)
-                    }.foregroundStyle(.secondary)
-
-                    // Self check-in result / button
-                    if result != nil {
-                        checkInResultView
-                        Button("重置測試") { result = nil; resetFriendAuth() }
-                            .font(.caption).foregroundStyle(.secondary)
-                    } else {
-                        switch selectedType {
-                        case .number:
-                            Button { showManualEntry = true } label: {
-                                Label("輸入數字碼", systemImage: "keyboard").frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(.borderedProminent).tint(AppTheme.accent)
-                        case .radar:
-                            Button { simulateCheckin() } label: {
-                                Label("雷達簽到", systemImage: "location.fill").frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(.borderedProminent).tint(.blue)
-                        case .qr:
-                            Button { showQRScanner = true } label: {
-                                Label("掃描 QR Code", systemImage: "qrcode.viewfinder").frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(.borderedProminent).tint(AppTheme.accent)
-                            .disabled(groupEnabled && isPreloadingSessions)
-                            .overlay(alignment: .trailing) {
-                                if groupEnabled && isPreloadingSessions {
-                                    ProgressView().controlSize(.small).padding(.trailing, 12)
-                                }
-                            }
-                        }
-                    }
-                }
+                )
                 .padding(.vertical, 4)
-            }
+                .id("\(selectedType.rawValue)-\(simulateAlreadyCheckedIn)")
 
-            // Group rollcall test section
-            if !credFriends.isEmpty {
-                Section {
-                    HStack {
-                        Image(systemName: "person.2.fill").font(.caption)
-                        Text("代替朋友同時點名（測試）").font(.caption.weight(.medium))
-                        Spacer()
-                        Toggle("", isOn: $groupEnabled)
-                            .labelsHidden()
-                            .tint(AppTheme.accent)
-                            .onChange(of: groupEnabled) { _, enabled in
-                                if enabled {
-                                    selectedFriendIds = Set(credFriends.map(\.id))
-                                    if selectedType == .radar || selectedType == .qr {
-                                        Task { await authenticateFriends() }
-                                    }
-                                } else {
-                                    selectedFriendIds = []
-                                    resetFriendAuth()
-                                }
-                            }
+                if result != nil || !friendResults.isEmpty {
+                    Button("重置測試") {
+                        result = nil
+                        friendResults = [:]
                     }
-                    .foregroundStyle(AppTheme.accent)
-
-                    if groupEnabled {
-                        ForEach(credFriends) { friend in
-                            HStack(spacing: 10) {
-                                Button {
-                                    if selectedFriendIds.contains(friend.id) {
-                                        selectedFriendIds.remove(friend.id)
-                                    } else {
-                                        selectedFriendIds.insert(friend.id)
-                                        if (selectedType == .radar || selectedType == .qr),
-                                           case .idle = friendAuthState[friend.id] ?? .idle {
-                                            Task { await authenticateFriend(friend) }
-                                        }
-                                    }
-                                } label: {
-                                    Image(systemName: selectedFriendIds.contains(friend.id)
-                                          ? "checkmark.circle.fill" : "circle")
-                                        .foregroundStyle(selectedFriendIds.contains(friend.id)
-                                                         ? AppTheme.accent : .secondary)
-                                }
-                                .buttonStyle(.plain)
-
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text(friend.displayName).font(.subheadline)
-                                    Text(friend.empNo).font(.caption).foregroundStyle(.secondary)
-                                }
-                                Spacer()
-
-                                // Auth state indicator (for radar/QR)
-                                if selectedType == .radar || selectedType == .qr {
-                                    let state = friendAuthState[friend.id] ?? .idle
-                                    if case .loading = state {
-                                        ProgressView().controlSize(.mini)
-                                    } else {
-                                        VStack(alignment: .trailing, spacing: 2) {
-                                            Image(systemName: state.icon)
-                                                .font(.caption)
-                                                .foregroundStyle(state.color)
-                                            Text(state.label)
-                                                .font(.caption2)
-                                                .foregroundStyle(state.color)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // Re-auth button if any failed
-                        let failedFriends = credFriends.filter { f in
-                            selectedFriendIds.contains(f.id) &&
-                            { if case .failure = friendAuthState[f.id] ?? .idle { return true }; return false }()
-                        }
-                        if !failedFriends.isEmpty {
-                            Button {
-                                Task { await authenticateFriends(only: failedFriends) }
-                            } label: {
-                                Label("重新嘗試失敗的帳號（\(failedFriends.count) 人）", systemImage: "arrow.clockwise")
-                                    .font(.caption)
-                            }
-                            .disabled(isPreloadingSessions)
-                        }
-                    }
-                } header: {
-                    Text("群組點名")
-                } footer: {
-                    if groupEnabled {
-                        Text("認證使用真實 API。點名本身不會送出請求（模擬）。")
-                            .font(.caption2)
-                    }
-                }
-            } else {
-                Section("群組點名") {
-                    Label("沒有已儲存帳密的朋友", systemImage: "person.2.slash")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 }
             }
 
@@ -1029,101 +889,35 @@ struct CheckInTestView: View {
             ManualCheckInSheet(rollcall: mockRollcall) { code in
                 showManualEntry = false
                 result = (code == "1234") ? .success(code) : .failure("數字碼錯誤（提示：正確是 1234）")
-                if groupEnabled { simulateGroupCheckin() }
+                simulateGroupCheckin(for: pendingManualFriends)
+                pendingManualFriends = []
             }
         }
         .sheet(isPresented: $showQRScanner) {
             QRScannerSheet(rollcall: mockRollcall) { _ in
                 showQRScanner = false
                 result = .success(nil)
-                if groupEnabled { simulateGroupCheckin() }
+                simulateGroupCheckin(for: pendingQRFriends)
+                pendingQRFriends = []
             }
         }
     }
 
     // MARK: - Helpers
 
-    @ViewBuilder
-    private var checkInResultView: some View {
-        if let result {
-            switch result {
-            case .success(let code):
-                if let code {
-                    Label("簽到成功！數字碼：\(code)", systemImage: "checkmark.circle.fill")
-                        .font(.subheadline.weight(.semibold)).foregroundStyle(.green)
-                } else {
-                    Label("簽到成功！（模擬）", systemImage: "checkmark.circle.fill")
-                        .font(.subheadline.weight(.semibold)).foregroundStyle(.green)
-                }
-            case .failure(let msg):
-                Label(msg, systemImage: "xmark.circle.fill")
-                    .font(.subheadline).foregroundStyle(.red)
-            }
-        }
-    }
-
-    private var methodIcon: String {
-        switch selectedType {
-        case .number: return "number.circle.fill"
-        case .radar:  return "location.circle.fill"
-        case .qr:     return "qrcode.viewfinder"
-        }
-    }
-
     private func loadCredFriends() {
         credFriends = FriendStore.shared.credentialedFriends
     }
 
-    private func resetFriendAuth() {
-        friendAuthState = [:]
-        isPreloadingSessions = false
-    }
-
-    private func simulateCheckin() {
+    private func simulateCheckin(includingFriends friends: [FriendRecord]) {
         result = .success(nil)
-        if groupEnabled { simulateGroupCheckin() }
+        simulateGroupCheckin(for: friends)
     }
 
     /// Mark selected friends as "simulated success" without sending any API request
-    private func simulateGroupCheckin() {
-        for friend in credFriends where selectedFriendIds.contains(friend.id) {
-            // Only mark as success if already authenticated (for radar/QR), or for number rollcall
-            if selectedType == .number {
-                if case .idle = friendAuthState[friend.id] ?? .idle {
-                    friendAuthState[friend.id] = .success(
-                        TronClassSession(sessionId: "mock", userId: 0, expiresAt: .distantFuture)
-                    )
-                }
-            }
-            // For radar/QR, auth state already reflects the real result — leave it as-is
-        }
-    }
-
-    private func authenticateFriends(only subset: [FriendRecord]? = nil) async {
-        let targets = subset ?? credFriends.filter { selectedFriendIds.contains($0.id) }
-        isPreloadingSessions = true
-        defer { isPreloadingSessions = false }
-        await withTaskGroup(of: Void.self) { group in
-            for friend in targets {
-                let f = friend
-                group.addTask { await authenticateFriend(f) }
-            }
-        }
-    }
-
-    private func authenticateFriend(_ friend: FriendRecord) async {
-        friendAuthState[friend.id] = .loading
-        guard let creds = try? CredentialStore.shared.retrieveFriendCredentials(empNo: friend.empNo) else {
-            friendAuthState[friend.id] = .failure("找不到帳密")
-            return
-        }
-        do {
-            let session = try await GroupRollcallService.shared.authenticateWithCredentials(
-                username: creds.username, password: creds.password
-            )
-            friendAuthState[friend.id] = .success(session)
-        } catch {
-            friendAuthState[friend.id] = .failure(error.localizedDescription)
+    private func simulateGroupCheckin(for friends: [FriendRecord]) {
+        for friend in friends {
+            friendResults[friend.empNo] = .success
         }
     }
 }

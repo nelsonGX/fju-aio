@@ -131,6 +131,7 @@ actor EstuAuthService {
     }
     
     private func performLogin(username: String, password: String, viewState: EstuViewState) async throws -> EstuSession {
+        let authLogger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "EstuAuth")
         let url = URL(string: "\(baseURL)\(loginPath)")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -172,6 +173,12 @@ actor EstuAuthService {
         
         if htmlParser.containsLoginError(in: html) {
             throw EstuError.invalidCredentials
+        }
+
+        guard htmlParser.containsAuthenticatedEstuContent(in: html) else {
+            let stillOnLoginPage = htmlParser.containsLoginForm(in: html)
+            authLogger.error("❌ ESTU login response did not contain authenticated content. stillOnLoginPage=\(stillOnLoginPage, privacy: .public), htmlLength=\(html.count, privacy: .public)")
+            throw stillOnLoginPage ? EstuError.invalidCredentials : EstuError.invalidResponse
         }
         
         // Extract session cookie from the response headers and cookie storage
