@@ -8,9 +8,8 @@ struct CheckInView: View {
     @State private var checkInResults: [Int: RollcallCheckInResult] = [:]
     /// Per-rollcall friend check-in status log (empNo → status)
     @State private var friendCheckInResults: [Int: [String: FriendCheckInStatus]] = [:]
-    @State private var showManualEntry = false
-    @State private var showQRScanner = false
-    @State private var selectedRollcall: Rollcall? = nil
+    @State private var manualEntryRollcall: Rollcall? = nil
+    @State private var qrScannerRollcall: Rollcall? = nil
     @State private var errorMessage: String? = nil
 
     // Per-rollcall: credentialed friends in this course
@@ -39,15 +38,13 @@ struct CheckInView: View {
                     proxyFriends: rollcallFriends[rollcall.rollcall_id] ?? [],
                     onManualEntry: { friends in
                         pendingManualFriends = friends
-                        selectedRollcall = rollcall
-                        showManualEntry = true
+                        manualEntryRollcall = rollcall
                     },
                     onRadarCheckIn: {
                         Task { await doRadarCheckIn(rollcall: rollcall) }
                     },
                     onQRCheckIn: {
-                        selectedRollcall = rollcall
-                        showQRScanner = true
+                        qrScannerRollcall = rollcall
                     },
                     onProxyRadarCheckIn: { friends in
                         Task { await doRadarCheckIn(rollcall: rollcall, includingFriends: friends) }
@@ -55,8 +52,7 @@ struct CheckInView: View {
                     onProxyQRCheckin: { sessions in
                         // Sessions are already pre-loaded by RollcallRowView
                         pendingQRFriendSessions = sessions
-                        selectedRollcall = rollcall
-                        showQRScanner = true
+                        qrScannerRollcall = rollcall
                     },
 
                 )
@@ -77,24 +73,20 @@ struct CheckInView: View {
         } message: {
             Text(errorMessage ?? "")
         }
-        .sheet(isPresented: $showManualEntry) {
-            if let rollcall = selectedRollcall {
-                ManualCheckInSheet(rollcall: rollcall) { code in
-                    showManualEntry = false
-                    let friends = pendingManualFriends
-                    pendingManualFriends = []
-                    Task { await doManualCheckIn(rollcall: rollcall, code: code, includingFriends: friends.isEmpty ? nil : friends) }
-                }
+        .sheet(item: $manualEntryRollcall) { rollcall in
+            ManualCheckInSheet(rollcall: rollcall) { code in
+                manualEntryRollcall = nil
+                let friends = pendingManualFriends
+                pendingManualFriends = []
+                Task { await doManualCheckIn(rollcall: rollcall, code: code, includingFriends: friends.isEmpty ? nil : friends) }
             }
         }
-        .sheet(isPresented: $showQRScanner) {
-            if let rollcall = selectedRollcall {
-                QRScannerSheet(rollcall: rollcall) { qrContent in
-                    showQRScanner = false
-                    let sessions = pendingQRFriendSessions
-                    pendingQRFriendSessions = []
-                    Task { await doQRCheckIn(rollcall: rollcall, qrContent: qrContent, friendSessions: sessions) }
-                }
+        .sheet(item: $qrScannerRollcall) { rollcall in
+            QRScannerSheet(rollcall: rollcall) { qrContent in
+                qrScannerRollcall = nil
+                let sessions = pendingQRFriendSessions
+                pendingQRFriendSessions = []
+                Task { await doQRCheckIn(rollcall: rollcall, qrContent: qrContent, friendSessions: sessions) }
             }
         }
     }
@@ -146,7 +138,10 @@ struct CheckInView: View {
         print("[CheckIn] Manual check-in: rollcall=\(rollcall.rollcall_id) code=\(code) friends=\(includingFriends?.count ?? 0)")
 
         if let friends = includingFriends, !friends.isEmpty {
+            let skipSelf = rollcall.isAlreadyCheckedIn
+
             async let selfResult: Bool = {
+                if skipSelf { return true }
                 do { return try await RollcallService.shared.manualCheckIn(rollcall: rollcall, code: code) }
                 catch { print("[CheckIn] ❌ Self manual check-in error: \(error)"); return false }
             }()
@@ -182,7 +177,9 @@ struct CheckInView: View {
 
             let (success, fResults) = await (selfResult, friendsResult)
             print("[CheckIn] Manual check-in result: \(success ? "✅" : "❌")")
-            checkInResults[rollcall.rollcall_id] = success ? .success(code) : .failure("數字碼錯誤，請再試一次")
+            if !skipSelf {
+                checkInResults[rollcall.rollcall_id] = success ? .success(code) : .failure("數字碼錯誤，請再試一次")
+            }
             friendCheckInResults[rollcall.rollcall_id] = fResults
         } else {
             do {
@@ -263,7 +260,10 @@ struct CheckInView: View {
     private func doQRCheckIn(rollcall: Rollcall, qrContent: String, friendSessions: [(FriendRecord, TronClassSession)] = []) async {
         print("[CheckIn] QR check-in: rollcall=\(rollcall.rollcall_id) friends=\(friendSessions.count)")
         if !friendSessions.isEmpty {
+            let skipSelf = rollcall.isAlreadyCheckedIn
+
             async let selfResult: Bool = {
+                if skipSelf { return true }
                 do { return try await RollcallService.shared.qrCheckIn(rollcall: rollcall, qrContent: qrContent) }
                 catch { print("[CheckIn] ❌ Self QR error: \(error)"); return false }
             }()
@@ -286,7 +286,9 @@ struct CheckInView: View {
             }()
             let (success, fResults) = await (selfResult, friendResults)
             print("[CheckIn] QR check-in result: \(success ? "✅" : "❌")")
-            checkInResults[rollcall.rollcall_id] = success ? .success(nil) : .failure("QR Code 點名失敗，請再試一次")
+            if !skipSelf {
+                checkInResults[rollcall.rollcall_id] = success ? .success(nil) : .failure("QR Code 點名失敗，請再試一次")
+            }
             friendCheckInResults[rollcall.rollcall_id] = fResults
         } else {
             do {
@@ -398,6 +400,36 @@ private struct RollcallRowView: View {
                         }
                     }) {
                         Label("雷達簽到", systemImage: "location.fill").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent).tint(.blue)
+                }
+            } else if rollcall.isActive && rollcall.isAlreadyCheckedIn && groupModeEnabled && !selectedFriends.isEmpty {
+                // Self already checked in — show proxy-only check-in buttons for friends
+                if rollcall.isNumber {
+                    Button(action: { onManualEntry(selectedFriends) }) {
+                        Label("為朋友輸入數字碼", systemImage: "keyboard").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent).tint(AppTheme.accent)
+                } else if rollcall.isQR {
+                    Button(action: {
+                        let sessions = selectedFriends.compactMap { f -> (FriendRecord, TronClassSession)? in
+                            guard let s = friendSessions[f.id] else { return nil }
+                            return (f, s)
+                        }
+                        onProxyQRCheckin(sessions)
+                    }) {
+                        Label("為朋友掃描 QR Code", systemImage: "qrcode.viewfinder").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent).tint(AppTheme.accent)
+                    .disabled(isPreloadingSessions)
+                    .overlay(alignment: .trailing) {
+                        if isPreloadingSessions {
+                            ProgressView().controlSize(.small).padding(.trailing, 12)
+                        }
+                    }
+                } else if rollcall.isRadar {
+                    Button(action: { onProxyRadarCheckIn(selectedFriends) }) {
+                        Label("為朋友雷達簽到", systemImage: "location.fill").frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent).tint(.blue)
                 }
