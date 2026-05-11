@@ -29,7 +29,7 @@ nonisolated struct LDAPLoginRequest: Codable, Sendable {
 nonisolated struct LDAPLoginResponse: Codable, Sendable {
     let statusCode: Int
     let result: LoginResult?
-    let message: [String: String]?
+    let message: AnyCodable?
     let errorMessage: [String]
     
     var success: Bool {
@@ -87,7 +87,7 @@ nonisolated struct StudentProfile: Codable, Sendable {
 nonisolated struct StuBaseInfoResponse: Codable, Sendable {
     let statusCode: Int
     let result: StuBaseInfo
-    let message: [String: String]?
+    let message: AnyCodable?
     let errorMessage: [String]
     
     struct StuBaseInfo: Codable, Sendable {
@@ -110,7 +110,7 @@ nonisolated struct StuBaseInfoResponse: Codable, Sendable {
 nonisolated struct GradesInquiryResponse: Codable, Sendable {
     let statusCode: Int
     let result: [GradeRecord]
-    let message: [String: String]?
+    let message: AnyCodable?
     let errorMessage: [String]
     
     struct GradeRecord: Codable, Sendable {

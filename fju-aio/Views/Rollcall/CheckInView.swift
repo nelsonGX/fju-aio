@@ -147,6 +147,7 @@ struct CheckInView: View {
 
         if let friends = includingFriends, !friends.isEmpty {
             async let selfResult: Bool = {
+                if rollcall.isAlreadyCheckedIn { return true }
                 do { return try await RollcallService.shared.manualCheckIn(rollcall: rollcall, code: code) }
                 catch { print("[CheckIn] ❌ Self manual check-in error: \(error)"); return false }
             }()
@@ -222,6 +223,7 @@ struct CheckInView: View {
 
             // Self + friends check-in in parallel
             async let selfResult: Bool = {
+                if rollcall.isAlreadyCheckedIn { return true }
                 do { return try await RollcallService.shared.radarCheckIn(rollcall: rollcall, latitude: lat, longitude: lon, accuracy: acc) }
                 catch { print("[CheckIn] ❌ Self radar error: \(error)"); return false }
             }()
@@ -264,6 +266,7 @@ struct CheckInView: View {
         print("[CheckIn] QR check-in: rollcall=\(rollcall.rollcall_id) friends=\(friendSessions.count)")
         if !friendSessions.isEmpty {
             async let selfResult: Bool = {
+                if rollcall.isAlreadyCheckedIn { return true }
                 do { return try await RollcallService.shared.qrCheckIn(rollcall: rollcall, qrContent: qrContent) }
                 catch { print("[CheckIn] ❌ Self QR error: \(error)"); return false }
             }()
@@ -303,7 +306,7 @@ struct CheckInView: View {
 
 // MARK: - Rollcall Row
 
-private struct RollcallRowView: View {
+struct RollcallRowView: View {
     let rollcall: Rollcall
     let result: RollcallCheckInResult?
     /// Per-friend check-in statuses returned after a group check-in (empNo → status)
@@ -333,6 +336,8 @@ private struct RollcallRowView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            let canCheckInForFriends = groupModeEnabled && !selectedFriends.isEmpty
+
             // Header
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -355,51 +360,65 @@ private struct RollcallRowView: View {
             }
             .foregroundStyle(.secondary)
 
-            // Own check-in button / result
-            if rollcall.isActive && !rollcall.isAlreadyCheckedIn {
-                if let result {
+            // Own check-in button / result. If self is already checked in, keep
+            // the action available only for selected proxy friends.
+            if rollcall.isActive {
+                if let result, !canCheckInForFriends {
                     resultView(result)
-                } else if rollcall.isNumber {
-                    Button(action: {
-                        // Pass selected friends; empty if group mode is off
-                        onManualEntry(groupModeEnabled ? selectedFriends : [])
-                    }) {
-                        Label("輸入數字碼", systemImage: "keyboard").frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent).tint(AppTheme.accent)
-                } else if rollcall.isQR {
-                    Button(action: {
-                        if groupModeEnabled && !selectedFriends.isEmpty {
-                            // Pass pre-loaded sessions so the QR content can be sent immediately after scan
-                            let sessions = selectedFriends.compactMap { f -> (FriendRecord, TronClassSession)? in
-                                guard let s = friendSessions[f.id] else { return nil }
-                                return (f, s)
+                } else if !rollcall.isAlreadyCheckedIn || canCheckInForFriends {
+                    if rollcall.isNumber {
+                        Button(action: {
+                            // Pass selected friends; empty if group mode is off
+                            onManualEntry(groupModeEnabled ? selectedFriends : [])
+                        }) {
+                            Label("輸入數字碼", systemImage: "keyboard").frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent).tint(AppTheme.accent)
+                    } else if rollcall.isQR {
+                        Button(action: {
+                            if groupModeEnabled && !selectedFriends.isEmpty {
+                                // Pass pre-loaded sessions so the QR content can be sent immediately after scan
+                                let sessions = selectedFriends.compactMap { f -> (FriendRecord, TronClassSession)? in
+                                    guard let s = friendSessions[f.id] else { return nil }
+                                    return (f, s)
+                                }
+                                if !sessions.isEmpty {
+                                    onProxyQRCheckin(sessions)
+                                } else if !rollcall.isAlreadyCheckedIn {
+                                    onQRCheckIn()
+                                }
+                            } else {
+                                onQRCheckIn()
                             }
-                            onProxyQRCheckin(sessions)
-                        } else {
-                            onQRCheckIn()
+                        }) {
+                            Label("掃描 QR Code", systemImage: "qrcode.viewfinder").frame(maxWidth: .infinity)
                         }
-                    }) {
-                        Label("掃描 QR Code", systemImage: "qrcode.viewfinder").frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent).tint(AppTheme.accent)
-                    .disabled(groupModeEnabled && isPreloadingSessions)
-                    .overlay(alignment: .trailing) {
-                        if groupModeEnabled && isPreloadingSessions {
-                            ProgressView().controlSize(.small).padding(.trailing, 12)
+                        .buttonStyle(.borderedProminent).tint(AppTheme.accent)
+                        .disabled(
+                            groupModeEnabled &&
+                            (isPreloadingSessions || (rollcall.isAlreadyCheckedIn && selectedFriends.allSatisfy { friendSessions[$0.id] == nil }))
+                        )
+                        .overlay(alignment: .trailing) {
+                            if groupModeEnabled && isPreloadingSessions {
+                                ProgressView().controlSize(.small).padding(.trailing, 12)
+                            }
                         }
-                    }
-                } else if rollcall.isRadar {
-                    Button(action: {
-                        if groupModeEnabled && !selectedFriends.isEmpty {
-                            onProxyRadarCheckIn(selectedFriends)
-                        } else {
-                            onRadarCheckIn()
+                    } else if rollcall.isRadar {
+                        Button(action: {
+                            if groupModeEnabled && !selectedFriends.isEmpty {
+                                onProxyRadarCheckIn(selectedFriends)
+                            } else {
+                                onRadarCheckIn()
+                            }
+                        }) {
+                            Label("雷達簽到", systemImage: "location.fill").frame(maxWidth: .infinity)
                         }
-                    }) {
-                        Label("雷達簽到", systemImage: "location.fill").frame(maxWidth: .infinity)
+                        .buttonStyle(.borderedProminent).tint(.blue)
                     }
-                    .buttonStyle(.borderedProminent).tint(.blue)
+                } else {
+                    Label("你已完成簽到", systemImage: "checkmark.circle.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.green)
                 }
             }
 
