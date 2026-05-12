@@ -2,9 +2,11 @@ import Foundation
 import ActivityKit
 import Observation
 import UIKit
+import OSLog
 
 // MARK: - Server config
 
+private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "CourseNotification")
 private let serverBaseURL = "https://fju-aio-notify.appppple.com"
 private let serverAuthToken: String? = nil
 private let liveActivityDismissalDelay: TimeInterval = 30
@@ -146,7 +148,7 @@ final class CourseNotificationManager {
         guard isEnabled, notifyStart || notifyBefore else { return }
         guard canUseLiveActivities else {
             disableForLiveActivityPermissionIssue()
-            print("[CourseNotification] Live Activities 未啟用，已關閉課程提醒")
+            logger.info("[CourseNotification] Live Activities 未啟用，已關閉課程提醒")
             return
         }
         lastCourseSnapshot = courses
@@ -167,7 +169,7 @@ final class CourseNotificationManager {
         guard isEnabled else { return false }
         guard canUseLiveActivities else {
             disableForLiveActivityPermissionIssue()
-            print("[CourseNotification] Live Activities 未啟用，已關閉課程提醒")
+            logger.info("[CourseNotification] Live Activities 未啟用，已關閉課程提醒")
             return false
         }
 
@@ -175,7 +177,7 @@ final class CourseNotificationManager {
         let calendar = Calendar.current
         guard let startDate = courseDate(for: course, on: now, calendar: calendar, useEndTime: false),
               let endDate   = courseDate(for: course, on: now, calendar: calendar, useEndTime: true) else {
-            print("[CourseNotification] 無法計算課程時間")
+            logger.info("[CourseNotification] 無法計算課程時間")
             return false
         }
 
@@ -183,7 +185,7 @@ final class CourseNotificationManager {
         if now < startDate      { phase = .before }
         else if now < endDate   { phase = .during }
         else {
-            print("[CourseNotification] 課程已結束，跳過 Live Activity")
+            logger.info("[CourseNotification] 課程已結束，跳過 Live Activity")
             return false
         }
         guard phase != .before || notifyBefore else { return false }
@@ -206,7 +208,7 @@ final class CourseNotificationManager {
             activeActivityIDs[course.id] = existingActivity.id
             await existingActivity.update(content)
             scheduleLocalPhaseUpdates(for: existingActivity, state: state)
-            print("[CourseNotification] ✅ Live Activity 已存在，更新而非重新啟動: \(existingActivity.id) phase=\(phase.rawValue)")
+            logger.info("[CourseNotification] ✅ Live Activity 已存在，更新而非重新啟動: \(existingActivity.id) phase=\(phase.rawValue)")
             return await registerActivity(existingActivity, courseId: course.id, startDate: startDate, endDate: endDate)
         }
 
@@ -216,12 +218,12 @@ final class CourseNotificationManager {
                 content: content,
                 pushType: .token
             )
-            print("[CourseNotification] ✅ Live Activity 啟動: \(activity.id) phase=\(phase.rawValue)")
+            logger.info("[CourseNotification] ✅ Live Activity 啟動: \(activity.id) phase=\(phase.rawValue)")
             activeActivityIDs[course.id] = activity.id
 
             return await registerActivity(activity, courseId: course.id, startDate: startDate, endDate: endDate)
         } catch {
-            print("[CourseNotification] ❌ Live Activity 啟動失敗: \(error)")
+            logger.info("[CourseNotification] ❌ Live Activity 啟動失敗: \(error)")
             return false
         }
     }
@@ -247,7 +249,7 @@ final class CourseNotificationManager {
         )
         let content = ActivityContent(state: newState, staleDate: staleDate(for: newState))
         await activity.update(content)
-        print("[CourseNotification] ✅ Live Activity 更新: phase=\(phase.rawValue)")
+        logger.info("[CourseNotification] ✅ Live Activity 更新: phase=\(phase.rawValue)")
     }
 
     @MainActor
@@ -263,7 +265,7 @@ final class CourseNotificationManager {
         let content = ActivityContent(state: finalState, staleDate: Date().addingTimeInterval(60))
         await activity.end(content, dismissalPolicy: .after(Date().addingTimeInterval(60)))
         activeActivityIDs.removeValue(forKey: course.id)
-        print("[CourseNotification] ✅ Live Activity 結束: \(course.name)")
+        logger.info("[CourseNotification] ✅ Live Activity 結束: \(course.name)")
 
         // Notify server to stop sending pushes for this activity
         Task {
@@ -281,7 +283,7 @@ final class CourseNotificationManager {
             }
         }
         activeActivityIDs.removeAll()
-        print("[CourseNotification] ✅ 全部 Live Activities 結束")
+        logger.info("[CourseNotification] ✅ 全部 Live Activities 結束")
     }
 
     func cancelForLogout() async {
@@ -312,7 +314,7 @@ final class CourseNotificationManager {
         await endAllLiveActivities()
         guard canUseLiveActivities else {
             disableForLiveActivityPermissionIssue()
-            print("[CourseNotification] Live Activities 未啟用，已關閉課程提醒")
+            logger.info("[CourseNotification] Live Activities 未啟用，已關閉課程提醒")
             return false
         }
 
@@ -339,10 +341,10 @@ final class CourseNotificationManager {
                 content: content,
                 pushType: .token
             )
-            print("[CourseNotification] ✅ 延遲測試 Live Activity 啟動: \(activity.id), 上課時間: \(startDate)")
+            logger.info("[CourseNotification] ✅ 延遲測試 Live Activity 啟動: \(activity.id), 上課時間: \(startDate)")
             return await registerActivity(activity, courseId: course.id, startDate: startDate, endDate: endDate)
         } catch {
-            print("[CourseNotification] ❌ 延遲測試 Live Activity 失敗: \(error)")
+            logger.info("[CourseNotification] ❌ 延遲測試 Live Activity 失敗: \(error)")
             return false
         }
     }
@@ -354,11 +356,11 @@ final class CourseNotificationManager {
         await endAllLiveActivities()
         guard canUseLiveActivities else {
             disableForLiveActivityPermissionIssue()
-            print("[CourseNotification] Live Activities 未啟用，已關閉課程提醒")
+            logger.info("[CourseNotification] Live Activities 未啟用，已關閉課程提醒")
             return false
         }
 
-        print("[CourseNotification] 完整週期測試：30 秒後啟動 Live Activity")
+        logger.info("[CourseNotification] 完整週期測試：30 秒後啟動 Live Activity")
         try? await Task.sleep(nanoseconds: 30_000_000_000)
 
         let now = Date()
@@ -384,10 +386,10 @@ final class CourseNotificationManager {
                 content: content,
                 pushType: .token
             )
-            print("[CourseNotification] ✅ 完整週期測試 Live Activity 啟動: \(activity.id), start=\(startDate), end=\(endDate)")
+            logger.info("[CourseNotification] ✅ 完整週期測試 Live Activity 啟動: \(activity.id), start=\(startDate), end=\(endDate)")
             return await registerActivity(activity, courseId: course.id, startDate: startDate, endDate: endDate)
         } catch {
-            print("[CourseNotification] ❌ 完整週期測試 Live Activity 失敗: \(error)")
+            logger.info("[CourseNotification] ❌ 完整週期測試 Live Activity 失敗: \(error)")
             return false
         }
     }
@@ -398,7 +400,7 @@ final class CourseNotificationManager {
         await endAllLiveActivities()
         guard canUseLiveActivities else {
             disableForLiveActivityPermissionIssue()
-            print("[CourseNotification] Live Activities 未啟用，已關閉課程提醒")
+            logger.info("[CourseNotification] Live Activities 未啟用，已關閉課程提醒")
             return false
         }
 
@@ -434,10 +436,10 @@ final class CourseNotificationManager {
                 content: content,
                 pushType: .token
             )
-            print("[CourseNotification] ✅ 測試 Live Activity: \(activity.id) phase=\(phase.rawValue)")
+            logger.info("[CourseNotification] ✅ 測試 Live Activity: \(activity.id) phase=\(phase.rawValue)")
             return await registerActivity(activity, courseId: course.id, startDate: startDate, endDate: endDate)
         } catch {
-            print("[CourseNotification] ❌ 測試 Live Activity 失敗: \(error)")
+            logger.info("[CourseNotification] ❌ 測試 Live Activity 失敗: \(error)")
             return false
         }
     }
@@ -486,17 +488,17 @@ final class CourseNotificationManager {
         let semesterStartDate = overrideSemesterStartDate ?? now
         let semesterEndDate = overrideSemesterEndDate ?? estimatedSemesterEndDate(for: semester, from: now)
         guard semesterEndDate > now else {
-            print("[CourseNotification] 學期已結束，跳過伺服器排程 semester=\(semester), until=\(semesterEndDate)")
+            logger.info("[CourseNotification] 學期已結束，跳過伺服器排程 semester=\(semester), until=\(semesterEndDate)")
             await cancelRemoteSchedules(semester: semester, deactivateToken: false)
             return
         }
-        print("[CourseNotification] 同步課程排程 semester=\(semester), courses=\(courses.count), from=\(semesterStartDate), until=\(semesterEndDate)")
+        logger.info("[CourseNotification] 同步課程排程 semester=\(semester), courses=\(courses.count), from=\(semesterStartDate), until=\(semesterEndDate)")
         let schedules = Array(courses.flatMap {
             remoteSchedules(for: $0, from: now, semesterStartDate: semesterStartDate, until: semesterEndDate, identity: identity)
         }.prefix(1000))
 
         guard !schedules.isEmpty else {
-            print("[CourseNotification] 沒有需要伺服器排程的課程 Live Activity")
+            logger.info("[CourseNotification] 沒有需要伺服器排程的課程 Live Activity")
             return
         }
 
@@ -509,7 +511,7 @@ final class CourseNotificationManager {
         )
         guard syncSignature != lastRemoteScheduleSyncSignature,
               syncSignature != inFlightRemoteScheduleSyncSignature else {
-            print("[CourseNotification] Live Activity 伺服器排程未變更，跳過重複同步")
+            logger.info("[CourseNotification] Live Activity 伺服器排程未變更，跳過重複同步")
             return
         }
         inFlightRemoteScheduleSyncSignature = syncSignature
@@ -527,9 +529,9 @@ final class CourseNotificationManager {
         inFlightRemoteScheduleSyncSignature = nil
         if success {
             lastRemoteScheduleSyncSignature = syncSignature
-            print("[CourseNotification] ✅ 已向伺服器同步整學期 Live Activities: \(semester) \(schedules.count)")
+            logger.info("[CourseNotification] ✅ 已向伺服器同步整學期 Live Activities: \(semester) \(schedules.count)")
         } else {
-            print("[CourseNotification] ⚠️ 課程 Live Activity 伺服器排程失敗")
+            logger.info("[CourseNotification] ⚠️ 課程 Live Activity 伺服器排程失敗")
         }
     }
 
@@ -809,7 +811,7 @@ final class CourseNotificationManager {
 
     private func registerCurrentPushToStartTokenIfAvailable(force: Bool, retryIfUnavailable: Bool) async {
         guard #available(iOS 17.2, *) else {
-            print("[CourseNotification] push-to-start token 需要 iOS 17.2 以上")
+            logger.info("[CourseNotification] push-to-start token 需要 iOS 17.2 以上")
             return
         }
 
@@ -818,7 +820,7 @@ final class CourseNotificationManager {
             return
         }
 
-        print("[CourseNotification] push-to-start token 尚未可用")
+        logger.info("[CourseNotification] push-to-start token 尚未可用")
         guard retryIfUnavailable else { return }
 
         Task {
@@ -829,7 +831,7 @@ final class CourseNotificationManager {
                     return
                 }
             }
-            print("[CourseNotification] ⚠️ push-to-start token 重試後仍不可用")
+            logger.info("[CourseNotification] ⚠️ push-to-start token 重試後仍不可用")
         }
     }
 
@@ -849,7 +851,7 @@ final class CourseNotificationManager {
         )
         if await postJSON(to: "\(serverBaseURL)/push-to-start/register", body: payload) {
             UserDefaults.standard.set(registrationKey, forKey: Keys.lastRegisteredPushToStartToken)
-            print("[CourseNotification] ✅ 已向伺服器註冊 push-to-start token")
+            logger.info("[CourseNotification] ✅ 已向伺服器註冊 push-to-start token")
             if !lastCourseSnapshot.isEmpty {
                 await scheduleRemoteCourseActivities(
                     for: lastCourseSnapshot,
@@ -858,7 +860,7 @@ final class CourseNotificationManager {
                 )
             }
         } else {
-            print("[CourseNotification] ⚠️ push-to-start token 註冊失敗")
+            logger.info("[CourseNotification] ⚠️ push-to-start token 註冊失敗")
         }
     }
 
@@ -931,7 +933,7 @@ final class CourseNotificationManager {
             )
             let content = ActivityContent(state: updatedState, staleDate: staleDate(for: updatedState))
             await activity.update(content)
-            print("[CourseNotification] ✅ 本機切換遠端啟動 Live Activity: \(activity.id) phase=\(phase.rawValue)")
+            logger.info("[CourseNotification] ✅ 本機切換遠端啟動 Live Activity: \(activity.id) phase=\(phase.rawValue)")
         }
     }
 
@@ -953,7 +955,7 @@ final class CourseNotificationManager {
             )
             let content = ActivityContent(state: finalState, staleDate: dismissalDate)
             await activity.end(content, dismissalPolicy: .immediate)
-            print("[CourseNotification] ✅ 本機結束遠端啟動 Live Activity: \(activity.id)")
+            logger.info("[CourseNotification] ✅ 本機結束遠端啟動 Live Activity: \(activity.id)")
         }
     }
 
@@ -979,7 +981,7 @@ final class CourseNotificationManager {
         endDate: Date
     ) async -> Bool {
         guard let tokenData = await firstPushToken(for: activity, timeoutSeconds: 15) else {
-            print("[CourseNotification] ⚠️ No push token received for activity \(activity.id) within 15 seconds")
+            logger.info("[CourseNotification] ⚠️ No push token received for activity \(activity.id) within 15 seconds")
             return false
         }
 
@@ -993,10 +995,10 @@ final class CourseNotificationManager {
         )
 
         guard await postJSON(to: "\(serverBaseURL)/activity/register", body: payload) else {
-            print("[CourseNotification] ❌ 向伺服器註冊失敗 activity: \(activity.id)")
+            logger.info("[CourseNotification] ❌ 向伺服器註冊失敗 activity: \(activity.id)")
             return false
         }
-        print("[CourseNotification] ✅ 已向伺服器註冊 activity: \(activity.id)")
+        logger.info("[CourseNotification] ✅ 已向伺服器註冊 activity: \(activity.id)")
 
         Task {
             await observeTokenRefreshes(
@@ -1050,9 +1052,9 @@ final class CourseNotificationManager {
             )
 
             if await postJSON(to: "\(serverBaseURL)/activity/register", body: update) {
-                print("[CourseNotification] 🔄 Push token refreshed for \(activity.id)")
+                logger.info("[CourseNotification] 🔄 Push token refreshed for \(activity.id)")
             } else {
-                print("[CourseNotification] ⚠️ Push token refresh registration failed for \(activity.id)")
+                logger.info("[CourseNotification] ⚠️ Push token refresh registration failed for \(activity.id)")
             }
         }
     }
@@ -1119,12 +1121,12 @@ final class CourseNotificationManager {
         )
         if await postJSON(to: "\(serverBaseURL)/push-to-start/cancel", body: payload) {
             if let semester {
-                print("[CourseNotification] ✅ 已取消伺服器 \(semester) 未來 Live Activity 排程")
+                logger.info("[CourseNotification] ✅ 已取消伺服器 \(semester) 未來 Live Activity 排程")
             } else {
-                print("[CourseNotification] ✅ 已取消伺服器未來 Live Activity 排程")
+                logger.info("[CourseNotification] ✅ 已取消伺服器未來 Live Activity 排程")
             }
         } else {
-            print("[CourseNotification] ⚠️ 取消伺服器 Live Activity 排程失敗")
+            logger.info("[CourseNotification] ⚠️ 取消伺服器 Live Activity 排程失敗")
         }
     }
 
@@ -1160,13 +1162,13 @@ final class CourseNotificationManager {
             let (responseData, http) = try await networkService.performRequest(request, retryPolicy: .none)
 
             if (200..<300).contains(http.statusCode) || http.statusCode == 404 {
-                print("[CourseNotification] ✅ 已向伺服器登出 activity: \(activityId)")
+                logger.info("[CourseNotification] ✅ 已向伺服器登出 activity: \(activityId)")
             } else {
                 let body = String(data: responseData.prefix(300), encoding: .utf8) ?? "(unreadable)"
-                print("[CourseNotification] ⚠️ 登出 activity 失敗 HTTP \(http.statusCode): \(body)")
+                logger.info("[CourseNotification] ⚠️ 登出 activity 失敗 HTTP \(http.statusCode): \(body)")
             }
         } catch {
-            print("[CourseNotification] ⚠️ 登出 activity 失敗: \(error)")
+            logger.info("[CourseNotification] ⚠️ 登出 activity 失敗: \(error)")
         }
     }
 
@@ -1178,7 +1180,7 @@ final class CourseNotificationManager {
         do {
             data = try JSONEncoder().encode(body)
         } catch {
-            print("[CourseNotification] ⚠️ JSON 編碼失敗 (\(urlString)): \(error)")
+            logger.info("[CourseNotification] ⚠️ JSON 編碼失敗 (\(urlString)): \(error)")
             return false
         }
 
@@ -1193,13 +1195,13 @@ final class CourseNotificationManager {
 
             guard (200..<300).contains(http.statusCode) else {
                 let message = serverErrorMessage(from: responseData)
-                print("[CourseNotification] ⚠️ 伺服器錯誤 HTTP \(http.statusCode) (\(urlString)): \(message)")
+                logger.info("[CourseNotification] ⚠️ 伺服器錯誤 HTTP \(http.statusCode) (\(urlString)): \(message)")
                 return false
             }
 
             return true
         } catch {
-            print("[CourseNotification] ⚠️ POST 失敗 (\(urlString)): \(error)")
+            logger.info("[CourseNotification] ⚠️ POST 失敗 (\(urlString)): \(error)")
             return false
         }
     }

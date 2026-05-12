@@ -1,5 +1,8 @@
 import SwiftUI
 import UIKit
+import OSLog
+
+private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "Settings")
 
 struct SettingsView: View {
     @Environment(AuthenticationManager.self) private var authManager
@@ -366,7 +369,7 @@ struct SettingsView: View {
         do {
             sisSession = try await authManager.getValidSISSession()
         } catch {
-            print("無法載入 SIS Session: \(error)")
+            logger.info("無法載入 SIS Session: \(error)")
             sisSession = nil
         }
         isLoadingSession = false
@@ -493,7 +496,7 @@ struct SettingsView: View {
         do {
             try await authManager.logout()
         } catch {
-            print("登出失敗: \(error)")
+            logger.info("登出失敗: \(error)")
         }
     }
 }

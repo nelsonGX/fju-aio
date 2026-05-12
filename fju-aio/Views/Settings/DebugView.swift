@@ -1,6 +1,9 @@
 import SwiftUI
 import ActivityKit
 import EventKit
+import OSLog
+
+private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "Debug")
 
 // MARK: - Collapsible Section
 
@@ -666,7 +669,7 @@ struct DebugView: View {
             assignments = try await assignmentsTask
             availableSemesters = try await semestersTask
         } catch {
-            print("載入資料時發生錯誤: \(error)")
+            logger.info("載入資料時發生錯誤: \(error)")
         }
         isLoading = false
     }
@@ -682,7 +685,7 @@ struct DebugView: View {
         do {
             tronClassSession = try await authManager.getValidSession()
         } catch {
-            print("❌ 無法載入 TronClass Session: \(error)")
+            logger.info("❌ 無法載入 TronClass Session: \(error)")
             sessionLoadError = "TronClass: \(error.localizedDescription)"
             tronClassSession = nil
         }
@@ -692,7 +695,7 @@ struct DebugView: View {
         do {
             sisSession = try await authManager.getValidSISSession()
         } catch {
-            print("❌ 無法載入 SIS Session: \(error)")
+            logger.info("❌ 無法載入 SIS Session: \(error)")
             if sessionLoadError == nil {
                 sessionLoadError = "SIS: \(error.localizedDescription)"
             } else {
@@ -706,7 +709,7 @@ struct DebugView: View {
         do {
             estuSession = try await EstuAuthService.shared.getValidSession()
         } catch {
-            print("❌ 無法載入 ESTU Session: \(error)")
+            logger.info("❌ 無法載入 ESTU Session: \(error)")
             if sessionLoadError == nil {
                 sessionLoadError = "ESTU: \(error.localizedDescription)"
             } else {

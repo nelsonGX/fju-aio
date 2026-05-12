@@ -1,5 +1,8 @@
 import SwiftUI
 import WebKit
+import OSLog
+
+private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "DormWebView")
 
 /// A WKWebView that loads the dorm site and injects the JWT session into
 /// localStorage so the site treats the user as already logged in.
@@ -55,7 +58,7 @@ struct DormWebView: UIViewRepresentable {
             """
             webView.evaluateJavaScript(js) { _, error in
                 if let error {
-                    print("[DormWebView] localStorage injection error: \(error)")
+                    logger.info("[DormWebView] localStorage injection error: \(error)")
                 } else {
                     // Reload so the Vue SPA picks up the stored auth on startup
                     webView.reload()

@@ -1,4 +1,7 @@
 import SwiftUI
+import OSLog
+
+private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.nelsongx.apps.fju-aio", category: "Home")
 
 struct HomeView: View {
     @Environment(\.fjuService) private var service
@@ -539,7 +542,7 @@ struct HomeView: View {
         guard signature != lastNotificationSyncSignature else { return }
         lastNotificationSyncSignature = signature
 
-        print("[CourseNotification] calendar window semester=\(window.semester), start=\(String(describing: window.startDate)), end=\(String(describing: window.endDate)), source=\(window.source)")
+        logger.info("[CourseNotification] calendar window semester=\(window.semester), start=\(String(describing: window.startDate)), end=\(String(describing: window.endDate)), source=\(window.source)")
         Task(priority: .background) {
             await CourseNotificationManager.shared.scheduleAll(
                 for: snapshot,
