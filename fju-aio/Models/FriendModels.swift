@@ -243,6 +243,9 @@ nonisolated struct FriendRecord: Codable, Identifiable, Hashable, Sendable {
     /// Not persisted in JSON — recomputed from Keychain on load.
     var hasStoredCredentials: Bool = false
 
+    /// True when this record was created manually (not via QR / CloudKit).
+    var isManuallyAdded: Bool { id.hasPrefix("manual-") }
+
     static func == (lhs: FriendRecord, rhs: FriendRecord) -> Bool {
         lhs.id == rhs.id
     }

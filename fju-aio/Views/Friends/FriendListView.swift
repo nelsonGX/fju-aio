@@ -63,8 +63,11 @@ private struct FriendListContent: View {
     var body: some View {
         List {
             // MARK: 你的朋友
+            let regularFriends = friendStore.friends.filter { !$0.isManuallyAdded }
+            let manualFriends = friendStore.friends.filter { $0.isManuallyAdded }
+
             Section("你的朋友") {
-                if friendStore.friends.isEmpty {
+                if regularFriends.isEmpty {
                     HStack {
                         Spacer()
                         VStack(spacing: 8) {
@@ -81,7 +84,7 @@ private struct FriendListContent: View {
                     }
                     .listRowBackground(Color.clear)
                 } else {
-                    ForEach(friendStore.friends) { friend in
+                    ForEach(regularFriends) { friend in
                         NavigationLink {
                             FriendDetailView(friend: friend)
                         } label: {
@@ -89,8 +92,30 @@ private struct FriendListContent: View {
                         }
                     }
                     .onDelete { offsets in
-                        offsets.forEach { friendStore.removeFriend(id: friendStore.friends[$0].id) }
+                        let ids = offsets.map { regularFriends[$0].id }
+                        ids.forEach { friendStore.removeFriend(id: $0) }
                     }
+                }
+            }
+
+            // MARK: 手動新增（簽到用）
+            if !manualFriends.isEmpty {
+                Section {
+                    ForEach(manualFriends) { friend in
+                        NavigationLink {
+                            FriendDetailView(friend: friend)
+                        } label: {
+                            FriendRow(friend: friend)
+                        }
+                    }
+                    .onDelete { offsets in
+                        let ids = offsets.map { manualFriends[$0].id }
+                        ids.forEach { friendStore.removeFriend(id: $0) }
+                    }
+                } header: {
+                    Text("手動新增（僅用於簽到）")
+                } footer: {
+                    Text("這些帳號是手動輸入的，不透過 CloudKit 同步，僅儲存在此裝置。")
                 }
             }
         }
@@ -975,7 +1000,17 @@ struct FriendRow: View {
                 size: 44
             )
             VStack(alignment: .leading, spacing: 2) {
-                Text(friend.cachedProfile?.displayName ?? friend.displayName).font(.body)
+                HStack(spacing: 6) {
+                    Text(friend.cachedProfile?.displayName ?? friend.displayName).font(.body)
+                    if friend.isManuallyAdded {
+                        Text("手動")
+                            .font(.caption2.weight(.medium))
+                            .padding(.horizontal, 5).padding(.vertical, 2)
+                            .background(Color.orange.opacity(0.15))
+                            .foregroundStyle(.orange)
+                            .clipShape(Capsule())
+                    }
+                }
                 Text(friend.empNo).font(.caption).foregroundStyle(.secondary)
             }
         }

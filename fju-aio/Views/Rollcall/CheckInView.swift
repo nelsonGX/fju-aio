@@ -14,6 +14,7 @@ struct CheckInView: View {
     @State private var manualEntryRollcall: Rollcall? = nil
     @State private var qrScannerRollcall: Rollcall? = nil
     @State private var errorMessage: String? = nil
+    @State private var showManualFriendAdd = false
 
     // Per-rollcall: credentialed friends in this course
     @State private var rollcallFriends: [Int: [FriendRecord]] = [:]
@@ -66,6 +67,15 @@ struct CheckInView: View {
         .navigationTitle("課程簽到")
         .navigationBarTitleDisplayMode(.inline)
         .overlay { if isLoading { ProgressView() } }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    showManualFriendAdd = true
+                } label: {
+                    Image(systemName: "person.badge.plus")
+                }
+            }
+        }
         .task { await loadRollcalls() }
         .refreshable { await loadRollcalls() }
         .alert("錯誤", isPresented: Binding(
@@ -90,6 +100,12 @@ struct CheckInView: View {
                 let sessions = pendingQRFriendSessions
                 pendingQRFriendSessions = []
                 Task { await doQRCheckIn(rollcall: rollcall, qrContent: qrContent, friendSessions: sessions) }
+            }
+        }
+        .sheet(isPresented: $showManualFriendAdd) {
+            ManualFriendAddSheet { _ in
+                // Reload friends for existing rollcalls after a new manual profile is saved
+                Task { await loadFriendsForRollcalls() }
             }
         }
     }
@@ -785,6 +801,128 @@ struct QRScannerSheet: View {
                     Button("取消") { dismiss() }.foregroundStyle(.white)
                 }
             }
+        }
+    }
+}
+
+// MARK: - Manual Friend Add Sheet
+
+/// Allows manually creating a friend profile with LDAP credentials
+/// for use with the group rollcall proxy check-in feature.
+struct ManualFriendAddSheet: View {
+    /// Called with the newly created FriendRecord on success
+    let onAdded: (FriendRecord) -> Void
+
+    @State private var displayName = ""
+    @State private var empNo = ""
+    @State private var username = ""
+    @State private var password = ""
+    @State private var isLoading = false
+    @State private var errorMessage: String? = nil
+    @Environment(\.dismiss) private var dismiss
+
+    private var canSubmit: Bool {
+        !displayName.trimmingCharacters(in: .whitespaces).isEmpty &&
+        !empNo.trimmingCharacters(in: .whitespaces).isEmpty &&
+        !username.trimmingCharacters(in: .whitespaces).isEmpty &&
+        !password.isEmpty
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("姓名", text: $displayName)
+                        .textContentType(.name)
+                        .autocorrectionDisabled()
+                    TextField("學號（empNo）", text: $empNo)
+                        .textContentType(.username)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                } header: {
+                    Text("基本資料")
+                } footer: {
+                    Text("姓名僅在這台裝置顯示，學號用於比對課堂名單。")
+                }
+
+                Section {
+                    TextField("帳號", text: $username)
+                        .textContentType(.username)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                    SecureField("密碼", text: $password)
+                        .textContentType(.password)
+                } header: {
+                    Text("學校帳號（LDAP）")
+                } footer: {
+                    Text("帳號密碼儲存在本機 Keychain，僅用於代替點名。")
+                }
+
+                if let errorMessage {
+                    Section {
+                        Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.red)
+                            .font(.caption)
+                    }
+                }
+            }
+            .navigationTitle("手動新增朋友")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    if isLoading {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Button("儲存") {
+                            Task { await save() }
+                        }
+                        .disabled(!canSubmit)
+                    }
+                }
+            }
+        }
+    }
+
+    private func save() async {
+        isLoading = true
+        defer { isLoading = false }
+        errorMessage = nil
+
+        let trimmedEmpNo = empNo.trimmingCharacters(in: .whitespaces)
+        let trimmedUsername = username.trimmingCharacters(in: .whitespaces)
+        let trimmedDisplayName = displayName.trimmingCharacters(in: .whitespaces)
+
+        // Save credentials to Keychain
+        do {
+            try CredentialStore.shared.saveFriendCredentials(
+                empNo: trimmedEmpNo,
+                username: trimmedUsername,
+                password: password
+            )
+        } catch {
+            errorMessage = "無法儲存憑證：\(error.localizedDescription)"
+            return
+        }
+
+        // Create a local-only FriendRecord (no CloudKit record name — use a stable local ID)
+        let localID = "manual-\(trimmedEmpNo)"
+        var record = FriendRecord(
+            id: localID,
+            empNo: trimmedEmpNo,
+            displayName: trimmedDisplayName,
+            cachedProfile: nil,
+            scheduleShareToken: nil,
+            addedAt: Date()
+        )
+        record.hasStoredCredentials = true
+
+        await MainActor.run {
+            FriendStore.shared.addManualFriend(record)
+            dismiss()
+            onAdded(record)
         }
     }
 }

@@ -53,6 +53,17 @@ final class FriendStore {
         return true
     }
 
+    /// Adds or updates a manually-created local friend (no CloudKit record required).
+    func addManualFriend(_ record: FriendRecord) {
+        if let idx = friends.firstIndex(where: { $0.id == record.id }) {
+            friends[idx].displayName = record.displayName
+            friends[idx].hasStoredCredentials = record.hasStoredCredentials
+        } else {
+            friends.append(record)
+        }
+        save()
+    }
+
     func isFriend(recordName: String) -> Bool {
         friends.contains { $0.id == recordName }
     }
